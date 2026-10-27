@@ -6,6 +6,9 @@ import { initAudio } from '../audio.js';
 import { restart, setState } from '../game.js';
 
 // ---------------------------------------------------------------- level select, buttons, settings
+// window controls from electron/preload.cjs; undefined when the game runs in a browser
+const desktop = window.kineticDesktop;
+
 export function renderLevels() {
   const el = document.getElementById('levels');
   el.innerHTML = LEVELS.map((L, i) => `<button class="lvl${i === game.selected ? ' sel' : ''}" data-i="${i}">
@@ -22,10 +25,11 @@ function startSelected() {
 export function lockAndPlay() {
   initAudio();
   try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
-  // Ctrl is crouch: Ctrl+W would close the tab, which only the Keyboard Lock API (fullscreen, Chromium) can stop
+  // Ctrl is crouch: Ctrl+W would close the tab, which only the Keyboard Lock API (fullscreen, Chromium) can stop.
+  // the desktop app has no Ctrl+W and its own display mode setting, so it skips this
   try {
     const kb = navigator.keyboard;
-    if (kb && kb.lock && document.documentElement.requestFullscreen) {
+    if (!desktop && kb && kb.lock && document.documentElement.requestFullscreen) {
       const enter = document.fullscreenElement ? Promise.resolve() : document.documentElement.requestFullscreen();
       enter.then(() => kb.lock()).catch(() => {});
     }
@@ -60,4 +64,12 @@ export function initMenu() {
   };
   [sensEl, fovEl, fxEl].forEach((el) => el.addEventListener('input', syncSettings));
   syncSettings();
+
+  // display mode lives in the desktop app (it owns the window), so the dropdown only shows there
+  const displayEl = document.getElementById('displayMode');
+  document.getElementById('displayRow').hidden = !desktop;
+  if (desktop) {
+    desktop.getDisplayMode().then((m) => { displayEl.value = m; });
+    displayEl.addEventListener('change', () => desktop.setDisplayMode(displayEl.value));
+  }
 }

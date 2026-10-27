@@ -29,6 +29,8 @@ npm run dist     # build Windows executables into release/
 - `Kinetic Setup <version>.exe`: an installer with a Start menu shortcut and uninstaller
 - `Kinetic-<version>-portable.exe`: a single exe you can run from anywhere without installing
 
+In the desktop app, the menu's **Display** setting switches between Fullscreen, Borderless window and Windowed, and is remembered between launches. Switching to or from Borderless reopens the window, which returns you to the menu.
+
 The exes aren't code-signed, so Windows SmartScreen may warn the first time you run them ("More info" → "Run anyway").
 
 Pick a level and click to start. The game needs a mouse and keyboard and uses pointer lock for mouse look.
