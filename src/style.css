@@ -77,6 +77,9 @@ kbd { font-family: inherit; font-weight: 700; color: var(--cyan); }
 .tips { font-size: 15px; color: var(--dim); margin-top: 14px; line-height: 1.45; }
 .settings { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 15px; align-items: center; }
 .settings input[type=range] { width: 130px; accent-color: var(--accent); }
+.settings select { font: inherit; font-weight: 600; color: var(--hud); background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18); padding: 3px 6px; margin-left: 4px; cursor: pointer; }
+.settings option { background: #10121e; }
 button { font-family: inherit; font-size: 22px; font-weight: 700; letter-spacing: 4px; margin-top: 20px; width: 100%;
   padding: 12px; background: var(--accent); color: #fff; border: 0; cursor: pointer; }
 button:hover { filter: brightness(1.15); }
