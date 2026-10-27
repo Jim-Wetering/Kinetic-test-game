@@ -15,6 +15,22 @@ npm run build    # production build into dist/
 npm run preview  # serve the production build
 ```
 
+### Desktop app (Windows .exe)
+
+The game is wrapped in [Electron](https://www.electronjs.org/) for a standalone desktop version.
+
+```sh
+npm start        # build and open the game in a desktop window
+npm run dist     # build Windows executables into release/
+```
+
+`npm run dist` makes two files in `release/`:
+
+- `Kinetic Setup <version>.exe`: an installer with a Start menu shortcut and uninstaller
+- `Kinetic-<version>-portable.exe`: a single exe you can run from anywhere without installing
+
+The exes aren't code-signed, so Windows SmartScreen may warn the first time you run them ("More info" → "Run anyway").
+
 Pick a level and click to start. The game needs a mouse and keyboard and uses pointer lock for mouse look.
 
 ## Controls
@@ -61,6 +77,7 @@ Best times, the last level played and your settings (mouse sensitivity, FOV, spe
 
 ```
 index.html            HUD and menu markup; loads src/main.js
+electron/main.cjs     desktop window for the .exe build
 src/
   main.js             startup and the frame loop (camera, effects, rendering)
   config.js           movement tuning constants
