@@ -15,6 +15,8 @@ import { keys, crouchDown, initInput } from './input.js';
 import { P, right, tmp, hspeed } from './player/player.js';
 import { findHookTarget } from './player/moves.js';
 import { step } from './player/step.js';
+import { pose, animate } from './player/anim.js';
+import { updateRig, renderViewmodel, gripPoint } from './render/rig.js';
 import { style } from './ui/style.js';
 import { updateHud } from './ui/hud.js';
 import { initMenu } from './ui/menu.js';
@@ -30,6 +32,7 @@ loadLevel(game.levelIdx); restart(); setState('menu');
 // ---------------------------------------------------------------- main loop
 const FIXED = 1 / 120;
 let last = performance.now(), acc = 0, hookCheckT = 0, canHook = false;
+const feet = new THREE.Vector3();
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -61,23 +64,28 @@ function frame(now) {
   }
   camfx.shakeAmt = Math.max(0, camfx.shakeAmt - dt * 1.5);
   const sh = camfx.shakeAmt * 0.25;
+  feet.lerpVectors(P.prev, P.pos, alpha);
   cam.position.set(
-    P.prev.x + (P.pos.x - P.prev.x) * alpha + (Math.random() - 0.5) * sh,
-    P.prev.y + (P.pos.y - P.prev.y) * alpha + P.eye - camfx.landDip + bob + (Math.random() - 0.5) * sh,
-    P.prev.z + (P.pos.z - P.prev.z) * alpha + (Math.random() - 0.5) * sh);
+    feet.x + (Math.random() - 0.5) * sh,
+    feet.y + P.eye - camfx.landDip + bob + (Math.random() - 0.5) * sh,
+    feet.z + (Math.random() - 0.5) * sh);
   right.set(Math.cos(look.yaw), 0, -Math.sin(look.yaw));
   const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
   const rollT = P.wr ? -P.wrN.dot(right) * 0.2 : P.sliding ? 0.05 : -strafe * 0.015 * Math.min(hs / 10, 1.5);
   camfx.roll += (rollT - camfx.roll) * Math.min(1, dt * 8);
-  cam.rotation.set(look.pitch, look.yaw, settings.fx ? camfx.roll : 0);
+  // camPitch is the body animation's nod (landings, vaults) or full forward flip (rolls), from last frame
+  cam.rotation.set(look.pitch + pose.camPitch, look.yaw, settings.fx ? camfx.roll : 0);
   camfx.fovKick = Math.max(0, camfx.fovKick - dt * 40);
   const targetH = settings.fov + clamp((hs - 10) * 0.75, 0, 28) + camfx.fovKick;
   camfx.curFov += (targetH - camfx.curFov) * Math.min(1, dt * 6);
   cam.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camfx.curFov) / 2) / cam.aspect));
   cam.updateProjectionMatrix();
   cam.updateMatrixWorld();
-  cam.getWorldDirection(camDir);
+  // aim from the look angles, not the camera, so a roll's flip doesn't swing the grapple aim
+  camDir.set(-Math.sin(look.yaw) * Math.cos(look.pitch), Math.sin(look.pitch), -Math.cos(look.yaw) * Math.cos(look.pitch));
   sky.position.copy(cam.position);
+  animate(dt);
+  updateRig(feet);
 
   if ((hookCheckT -= dt) <= 0) { hookCheckT = 0.05; canHook = game.state === 'play' && !P.grapple && P.grappleCd <= 0 && !!findHookTarget(); }
 
@@ -90,12 +98,13 @@ function frame(now) {
   rope.visible = !!P.grapple;
   if (P.grapple) {
     const pa = rope.geometry.attributes.position;
-    tmp.copy(cam.position).addScaledVector(right, 0.3); tmp.y -= 0.35;
+    gripPoint(tmp);
     pa.setXYZ(0, tmp.x, tmp.y, tmp.z); pa.setXYZ(1, P.grapple.point.x, P.grapple.point.y, P.grapple.point.z); pa.needsUpdate = true;
   }
 
   updateHud(dt, hs, canHook);
   renderer.render(scene, cam);
+  renderViewmodel();
   drawSpeedLines(hs);
 }
 requestAnimationFrame(frame);
