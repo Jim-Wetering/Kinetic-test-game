@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinetic</title>
+</head>
+<body>
+<canvas id="lines"></canvas>
+
+<div id="hud">
+  <div id="tl"><div id="lvlName"></div><div id="timer">0:00.00</div><div id="cpText">CHECKPOINT 0/0</div><div id="best">BEST —</div></div>
+  <div id="cross"></div>
+  <div id="nav"><div id="navArrow"></div><div id="navDist"></div></div>
+  <div id="speedBox"><div id="speed">0</div><div class="unit">M/S · <span id="kmh">0</span> KM/H</div><div id="speedBar"><i></i></div></div>
+  <div id="bl">
+    <div class="row"><span class="lbl">STAMINA</span><span id="stam"><i></i></span></div>
+    <div class="row"><span class="lbl">WALL&nbsp;J</span><span class="pips" id="wj"><b><i></i></b><b><i></i></b><b><i></i></b></span></div>
+    <div class="row"><span class="lbl">HOOK</span><span id="hook">READY</span></div>
+  </div>
+  <div id="styleBox"><div id="rank">D</div><div id="meter"><i></i></div><div id="feed"></div></div>
+  <div id="msg"></div>
+</div>
+
+<div class="overlay show" id="menu"><div class="card">
+  <h1 id="menuTitle">KINETIC</h1>
+  <div class="tag">Rooftop momentum runs. Follow the red beacon to each checkpoint, pick your own line, and never stop moving.</div>
+  <div class="levels" id="levels"></div>
+  <div class="grid">
+    <div><span>Move / look</span><kbd>WASD + Mouse</kbd></div>
+    <div><span>Jump · wall jump · air jump</span><kbd>Space</kbd></div>
+    <div><span>Dash (uses stamina)</span><kbd>Shift</kbd></div>
+    <div><span>Crouch · slide · (air) slam</span><kbd>Ctrl / C</kbd></div>
+    <div><span>Grapple (hold)</span><kbd>E / Right mouse</kbd></div>
+    <div><span>Restart run</span><kbd>R</kbd></div>
+    <div><span>Pause · level select</span><kbd>Esc</kbd></div>
+  </div>
+  <details class="tips"><summary>HOW TO MOVE</summary>
+    <b>Wallrun:</b> jump at a red wall (or any building side) at an angle while holding W. Jump again to hop off.<br>
+    <b>Running:</b> you start at a jog and keep picking up speed the longer you run, with no top speed. Sharp turns cost speed.<br>
+    <b>Momentum:</b> speed you build up (running, wallruns, slides, slams, dashes) carries over as long as you keep moving. Letting go of the keys, crouching or a hard landing kills it.<br>
+    <b>Stamina:</b> dash and air jump share one meter. It refills after a short pause, and landing a roll gives a chunk back.<br>
+    <b>Dash:</b> press Shift to dash the way you're moving. Each dash costs one notch of stamina.<br>
+    <b>Air jump:</b> press Space again in the air to jump, as many times as your stamina allows (one notch each).<br>
+    <b>Vault / mantle:</b> run or jump into a ledge while holding W; you keep your speed.<br>
+    <b>Slide-hop / bhop:</b> jump the instant you land to skip ground friction. Air-strafe (A/D + mouse) to gain speed.<br>
+    <b>Slam:</b> Ctrl in the air. Jump right after landing for a slam jump; the higher the fall, the bigger the jump.<br>
+    <b>Roll:</b> tap Ctrl just before a big landing to keep your speed instead of eating a hard landing.<br>
+    <b>Dash jump:</b> jump during a ground dash to launch at dash speed.<br>
+    <b>Runner vision:</b> red beams, wallrun panels and crates mark useful routes; cyan hooks are grapple points.
+  </details>
+  <div class="settings">
+    <label>Sensitivity <input type="range" id="sens" min="0.2" max="3" step="0.05" value="1"> <span id="sensV">1.00</span></label>
+    <label>FOV <input type="range" id="fov" min="80" max="120" step="1" value="100"> <span id="fovV">100</span></label>
+    <label><input type="checkbox" id="fx" checked> Speed lines &amp; shake</label>
+    <label id="displayRow" hidden>Display <select id="displayMode">
+      <option value="fullscreen">Fullscreen</option>
+      <option value="borderless">Borderless window</option>
+      <option value="windowed">Windowed</option>
+    </select></label>
+  </div>
+  <button id="go">RUN</button>
+  <button class="alt quit" data-quit hidden>EXIT TO DESKTOP</button>
+</div></div>
+
+<div class="overlay" id="results"><div class="card">
+  <h1>FINISH</h1>
+  <div class="tag"><b id="resLevel"></b> · <span id="resTag"></span></div>
+  <div class="res"><span>Time</span><b id="rTime"></b></div>
+  <div class="res"><span>Best</span><b id="rBest"></b></div>
+  <div class="res"><span>Style points</span><b id="rStyle"></b></div>
+  <div class="res"><span>Top speed</span><b id="rTop"></b></div>
+  <div class="res"><span>Falls</span><b id="rFalls"></b></div>
+  <div class="btns"><button id="again">RUN AGAIN (R)</button><button id="next" class="alt">NEXT LEVEL</button><button id="toMenu" class="alt">LEVEL SELECT</button><button class="alt" data-quit hidden>EXIT TO DESKTOP</button></div>
+</div></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
