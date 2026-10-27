@@ -3,7 +3,7 @@ import { scene } from './scene.js';
 
 // ---------------------------------------------------------------- toon materials
 // 3 hard light bands; RGBA so the toon shader's .rgb lookup is grey, not red-only
-const toonRamp = new THREE.DataTexture(new Uint8Array([105, 105, 105, 255, 180, 180, 180, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
+export const toonRamp = new THREE.DataTexture(new Uint8Array([105, 105, 105, 255, 180, 180, 180, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
 toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
 toonRamp.generateMipmaps = false; toonRamp.needsUpdate = true;
 // polygon offset pushes faces back so the crease lines always win the depth test

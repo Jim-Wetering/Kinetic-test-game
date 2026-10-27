@@ -16,6 +16,7 @@ import {
   friction, accelerate, airAccel, setHeight, startSlide, startSlam, endWallrun, tryStartWallrun, wallrunStep, wallrunJump,
   wallJump, findHookTarget, releaseGrapple, grappleStep, tryLedge, mantleStep, land,
 } from './moves.js';
+import { cue } from './anim.js';
 
 // ---------------------------------------------------------------- one fixed physics step
 let nearTick = 0;
@@ -56,7 +57,7 @@ export function step(dt) {
       P.stamina -= DASH_COST; P.staminaIdle = 0; P.dashT = DASH_T; P.preDash = hspeed();
       P.dashDir.copy(wish.lengthSq() > 0 ? wish : fwd); // the way you're holding, forward if nothing
       endWallrun(); P.slamming = false; releaseGrapple(false);
-      addStyle('DASH', 5); camfx.fovKick = 10; sfx(200, 1200, .15, 'sawtooth', .05);
+      addStyle('DASH', 5); cue('dash'); camfx.fovKick = 10; sfx(200, 1200, .15, 'sawtooth', .05);
     }
   }
   // crouch tap in the air: slam, or drop off a wallrun
@@ -68,6 +69,8 @@ export function step(dt) {
   // jump priority: slam jump > dash jump > hook hop > wallrun hop > ground/coyote > wall jump > air jump
   let jumped = false;
   if (input.jumpBuf > 0) {
+    // ground, slam, dash and hook jumps swing the arms up; wall and air jumps cue their own animation
+    const plainJump = !P.wr && (P.grapple || P.grounded || P.coyote > 0);
     if (P.grounded && P.slamWin > 0) { P.vel.y = JUMP_V + P.slamPow; addStyle('SLAM JUMP', 18); jumped = true; }
     else if (P.dashT > 0 && (P.grounded || P.coyote > 0)) {
       const sp = DASH_SPEED * 0.85;
@@ -86,9 +89,10 @@ export function step(dt) {
       // air jump for stamina, unless we'll land inside the jump buffer window (that press is a bhop)
       else if (!P.slamming && P.stamina >= AIR_JUMP_COST && !groundWithin(Math.max(0.5, -P.vel.y * 0.13))) {
         P.stamina -= AIR_JUMP_COST; P.staminaIdle = 0; P.dashT = 0;
-        P.vel.y = Math.max(P.vel.y, AIR_JUMP_V); addStyle('AIR JUMP', 6); jumped = true;
+        P.vel.y = Math.max(P.vel.y, AIR_JUMP_V); addStyle('AIR JUMP', 6); cue('airjump'); jumped = true;
       }
     }
+    if (jumped && plainJump) cue('jump');
     if (jumped) { input.jumpBuf = 0; P.grounded = false; P.coyote = 0; P.slamWin = 0; sfx(420, 640, .1, 'triangle', .05); }
   }
 

@@ -60,6 +60,7 @@ Pick a level and click to start. The game needs a mouse and keyboard and uses po
 - **Dash:** press Shift to dash the way you're moving (forward if you're standing still). Each dash costs one notch (30%) of stamina.
 - **Air jump:** press Space again in the air to jump, as many times as your stamina allows. Each one costs one notch (30%).
 - **Dash jump:** jump during a ground dash to launch at dash speed.
+- **Body:** you have first-person arms and legs. Your arms pump as you sprint, plant on vaults, hook ledges on mantles, press the wall on wallruns and hold the grapple line. Look down to see your legs. With speed lines & shake on, a roll flips the view all the way over.
 - **Runner vision:** red beams, wallrun panels and crates mark useful routes. Cyan hooks are grapple points.
 
 ## Levels
@@ -89,8 +90,8 @@ src/
   audio.js            footsteps and sound effects (Web Audio)
   input.js            keyboard and mouse
   style.css           HUD and menu styles
-  render/             renderer, sky, toon materials, geometry batching, themes, camera fx
+  render/             renderer, sky, toon materials, geometry batching, themes, camera fx, player rig (arms, legs, IK)
   world/              level building, the district and line generators, level list
-  player/             player state, collision, moves (wallrun, grapple, vault...), physics step
+  player/             player state, collision, moves (wallrun, grapple, vault...), physics step, body animation
   ui/                 HUD, style meter, level select and settings
 ```
