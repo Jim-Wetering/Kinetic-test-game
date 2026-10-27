@@ -719,18 +719,40 @@ function loadLevel(idx) {
 }
 
 // ---------------------------------------------------------------- audio
-let AC = null, windGain = null, windFilter = null;
+let AC = null, noiseBuf = null, stepSide = 1;
 function initAudio() {
   if (AC) return;
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
-    const buf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate), d = buf.getChannelData(0);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const src = AC.createBufferSource(); src.buffer = buf; src.loop = true;
-    windFilter = AC.createBiquadFilter(); windFilter.type = 'bandpass'; windFilter.Q.value = 0.6;
-    windGain = AC.createGain(); windGain.gain.value = 0;
-    src.connect(windFilter).connect(windGain).connect(AC.destination); src.start();
   } catch (e) { AC = null; }
+}
+// one footfall: a low thump plus a filtered noise scuff. faster = brighter, punchier, louder;
+// crouching = soft and muffled; wallrun steps ring a little higher off the wall
+function footstep(speed, crouch, wall) {
+  if (!AC) return;
+  const t = AC.currentTime, k = Math.min(speed / 25, 1), rnd = () => 0.9 + Math.random() * 0.2;
+  const vol = crouch ? 0.4 : 0.55 + k * 0.6;
+  let out = AC.destination;
+  if (AC.createStereoPanner) {
+    const p = AC.createStereoPanner(); p.pan.value = (stepSide = -stepSide) * 0.15; p.connect(out); out = p;
+  }
+  const thumpF = (crouch ? 65 : 85 + k * 55) * (wall ? 1.4 : 1) * rnd(), thumpDur = crouch ? 0.12 : 0.1 - k * 0.04;
+  const o = AC.createOscillator(), og = AC.createGain();
+  o.frequency.setValueAtTime(thumpF * 1.8, t); o.frequency.exponentialRampToValueAtTime(thumpF, t + 0.04);
+  og.gain.setValueAtTime(0.0001, t); og.gain.linearRampToValueAtTime(0.12 * vol, t + 0.004);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + thumpDur);
+  o.connect(og).connect(out); o.start(t); o.stop(t + thumpDur + 0.02);
+  const scuffDur = crouch ? 0.14 : 0.09 - k * 0.03;
+  const n = AC.createBufferSource(), f = AC.createBiquadFilter(), ng = AC.createGain();
+  n.buffer = noiseBuf;
+  f.type = crouch ? 'lowpass' : 'bandpass';
+  f.frequency.value = (crouch ? 900 : 1100 + k * 3000) * (wall ? 1.5 : 1) * rnd(); f.Q.value = 0.7 + k * 1.3;
+  ng.gain.setValueAtTime(0.0001, t); ng.gain.linearRampToValueAtTime(0.06 * vol * (0.6 + k), t + 0.003);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + scuffDur);
+  n.connect(f).connect(ng).connect(out); n.start(t, Math.random() * 1.5, scuffDur + 0.02);
 }
 function sfx(f1, f2, dur, type = 'sine', vol = 0.15) {
   if (!AC) return;
@@ -1421,7 +1443,14 @@ function frame(now) {
   P.eye += ((P.h - EYE) - P.eye) * Math.min(1, dt * 14);
   landDip += (0 - landDip) * Math.min(1, dt * 7);
   let bob = 0;
-  if (P.grounded && !P.sliding && hs > 1) { bobT += dt * hs * 0.9; bob = Math.sin(bobT) * 0.045 * Math.min(hs / 10, 1); }
+  // steps land on each half-cycle of the bob; cadence rises with speed but eases off so top speed isn't a drumroll
+  const onFeet = state === 'play' && ((P.grounded && !P.sliding) || P.wr);
+  if (onFeet && hs > 1) {
+    const prevStep = Math.floor(bobT / Math.PI);
+    bobT += dt * (4 + Math.min(hs, 32) * 0.55);
+    if (P.grounded) bob = Math.sin(bobT) * 0.045 * Math.min(hs / 10, 1);
+    if (Math.floor(bobT / Math.PI) !== prevStep) footstep(hs, crouchDown() && P.grounded, !!P.wr);
+  }
   shakeAmt = Math.max(0, shakeAmt - dt * 1.5);
   const sh = shakeAmt * 0.25;
   cam.position.set(
@@ -1459,11 +1488,6 @@ function frame(now) {
     const pa = rope.geometry.attributes.position;
     tmp.copy(cam.position).addScaledVector(right, 0.3); tmp.y -= 0.35;
     pa.setXYZ(0, tmp.x, tmp.y, tmp.z); pa.setXYZ(1, P.grapple.point.x, P.grapple.point.y, P.grapple.point.z); pa.needsUpdate = true;
-  }
-  if (windGain) {
-    const k = state === 'play' ? Math.min(P.vel.length() / 45, 1) : 0;
-    windGain.gain.setTargetAtTime(k * k * 0.35, AC.currentTime, 0.1);
-    windFilter.frequency.setTargetAtTime(300 + k * 1600, AC.currentTime, 0.1);
   }
 
   updateHud(dt, hs, canHook);
