@@ -1,6 +1,6 @@
 # Kinetic
 
-A first-person rooftop parkour time-trial that runs in the browser. Chain wallruns, slides, dashes, slams and grapples across procedurally laid-out city districts, and keep your momentum to set a best time on each course.
+A first-person rooftop parkour time-trial that runs in the browser. Chain wallruns, slides, dashes, slams and grapples along hand-built courses of rooftop set pieces, and keep your momentum to set a best time on each course.
 
 It's built on [three.js](https://threejs.org/) (r128) with plain JavaScript modules, bundled by [Vite](https://vite.dev/). Everything, including three.js and the font, is installed through npm, so the game runs offline.
 
@@ -67,12 +67,14 @@ Pick a level and click to start. The game needs a mouse and keyboard and uses po
 
 | Level | Description |
 | --- | --- |
-| Rooftops | Wide, forgiving roofs in the midday sun. A good place to learn the moves. |
-| Glass Canyon | Tall towers and wide streets. Wallrun and grapple across the gaps. |
-| Scaffold | A construction district full of beams, open floors and crane hooks. |
-| Descent | Start at the top, finish at the bottom. Roll your landings to keep your speed. |
-| Circuit | Three laps around a night-time block. |
-| The Line | One straight, unforgiving sprint route. |
+| Rooftops | Wide, forgiving roofs in the midday sun. Every move in turn, with two corners. |
+| Glass Canyon | Narrow towers 30 m up. Long wallrun chains, grapples and hook chains. |
+| Scaffold | Balance beams, hanging slabs, crane hooks and hazard bars. |
+| Descent | Start 80 m up, finish at the bottom. Big drops all the way: roll every landing. |
+| Circuit | Three laps of a night-time loop with four corners. |
+| The Line | The original: one straight, unforgiving sprint route. |
+
+Every level is a run of set pieces (gap, slide, wallrun, grapple, climb, drop, shaft, beam, platforms, hook chain, steps, long jump, corner) with its own tuning, built by `src/world/course.js`.
 
 Best times, the last level played and your settings (mouse sensitivity, FOV, speed lines and screen shake) are saved in the browser's local storage.
 
@@ -91,7 +93,7 @@ src/
   input.js            keyboard and mouse
   style.css           HUD and menu styles
   render/             renderer, sky, toon materials, geometry batching, themes, camera fx, player rig (arms, legs, IK)
-  world/              level building, the district and line generators, level list
+  world/              level building, the set-piece course builder, level list
   player/             player state, collision, moves (wallrun, grapple, vault...), physics step, body animation
   ui/                 HUD, style meter, level select and settings
 ```
