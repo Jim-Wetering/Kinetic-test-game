@@ -46,6 +46,9 @@ export function initMenu() {
   });
   document.getElementById('toMenu').addEventListener('click', () => { game.selected = game.levelIdx; restart(); });
   renderer.domElement.addEventListener('click', () => { if (game.state === 'play' && !look.locked) lockAndPlay(); });
+  // exit buttons only show in the desktop app: browsers ignore window.close() on a tab the player opened
+  const desktop = /Electron/.test(navigator.userAgent);
+  document.querySelectorAll('[data-quit]').forEach((b) => { b.hidden = !desktop; b.addEventListener('click', () => window.close()); });
 
   const sensEl = document.getElementById('sens'), fovEl = document.getElementById('fov'), fxEl = document.getElementById('fx');
   sensEl.value = settings.sens; fovEl.value = settings.fov; fxEl.checked = settings.fx;
