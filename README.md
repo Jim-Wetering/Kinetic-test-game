@@ -21,9 +21,8 @@ python -m http.server 8000
 | Action | Key |
 | --- | --- |
 | Move / look | WASD + mouse |
-| Jump / wall jump | Space |
-| Sprint (hold, uses a meter) | Shift |
-| Dash (3 charges) | Q |
+| Jump / wall jump / air jump | Space |
+| Dash (uses stamina) | Shift |
 | Crouch / slide / slam (in the air) | Ctrl or C |
 | Grapple (hold) | E or right mouse |
 | Restart run | R |
@@ -31,12 +30,16 @@ python -m http.server 8000
 
 ## Movement
 
+- **Running:** you start at a jog and keep picking up speed the longer you run in any direction, with no top speed. Each extra km/h takes a bit longer, and sharp turns cost speed.
 - **Wallrun:** jump at a wall at an angle while holding W. Jump again to kick off.
-- **Momentum:** speed from wallruns, slides, slams and dashes carries over on the ground as long as you keep moving. Letting go of the keys or landing hard kills it.
+- **Momentum:** speed from running, wallruns, slides, slams and dashes carries over as long as you keep moving. Letting go of the keys, crouching or landing hard kills it.
 - **Vault / mantle:** run or jump into a ledge while holding W and you keep your speed.
 - **Bhop:** jump the instant you land to skip ground friction, and air-strafe (A/D + mouse) to gain speed.
 - **Slam:** press Ctrl in the air. Jump right after landing for a slam jump; the higher the fall, the bigger the jump.
 - **Roll:** tap Ctrl just before a big landing to keep your speed.
+- **Stamina:** dash and air jump share one meter. It refills after a short pause, and landing a roll gives a chunk back.
+- **Dash:** press Shift to dash the way you're moving (forward if you're standing still). Each dash costs one notch (30%) of stamina.
+- **Air jump:** press Space again in the air to jump, as many times as your stamina allows. Each one costs one notch (30%).
 - **Dash jump:** jump during a ground dash to launch at dash speed.
 - **Runner vision:** red beams, wallrun panels and crates mark useful routes. Cyan hooks are grapple points.
 
