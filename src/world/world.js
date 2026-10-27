@@ -61,7 +61,8 @@ export function addBox(x0, y0, z0, x1, y1, z1, kind, color) {
 
 export function addCp(x, top, zz, yaw, opts = {}) {
   const finish = !!opts.finish;
-  const c = { x, y: top + 3, z: zz, top, yaw, finish, plane: !!opts.plane };
+  // plane checkpoints are gates across a course: crossed by passing them along dir within halfW of the line
+  const c = { x, y: top + 3, z: zz, top, yaw, finish, plane: !!opts.plane, dir: opts.dir || { x: 0, z: -1 }, halfW: opts.halfW || 7 };
   c.mesh = new THREE.Mesh(new THREE.TorusGeometry(finish ? 5 : 3.4, finish ? 0.3 : 0.2, 8, 48), cpMats.later);
   c.mesh.position.set(x, c.y, zz); c.mesh.rotation.y = yaw;
   world.add(c.mesh); cps.push(c);
