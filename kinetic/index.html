@@ -21,7 +21,7 @@
   /* bright cel-shaded scenes: HUD gets a hard dark drop shadow and dark bar tracks to stay readable */
   #hud { position: fixed; inset: 0; pointer-events: none; --dim: rgba(255,255,255,.88);
     text-shadow: 0 2px 0 rgba(0,0,0,.45), 0 0 8px rgba(0,0,0,.5); }
-  #hud .pips b, #hud #sprint, #hud #speedBar, #hud #meter { background: rgba(0,0,0,.35); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+  #hud .pips b, #hud #stam, #hud #speedBar, #hud #meter { background: rgba(0,0,0,.35); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
   #cross { box-shadow: 0 0 0 1.5px rgba(0,0,0,.6); }
   #lvlName { font-size: 14px; font-weight: 700; letter-spacing: 3px; color: var(--accent); }
   #nav { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
@@ -57,9 +57,11 @@
   .pips b { width: 26px; height: 8px; background: rgba(255,255,255,.15); position: relative; overflow: hidden; }
   .pips b i { position: absolute; inset: 0; width: 0; background: var(--cyan); }
   #wj b i { background: #ffb347; }
-  #sprint { width: 86px; height: 8px; background: rgba(255,255,255,.15); position: relative; }
-  #sprint i { position: absolute; inset: 0; width: 100%; background: #7aff9c; }
-  #sprint.empty i { background: #ff6a4a; }
+  #stam { width: 120px; height: 8px; background: rgba(255,255,255,.15); position: relative; }
+  #stam i { position: absolute; inset: 0; width: 100%; background: #7aff9c; }
+  #stam.low i { background: #ff6a4a; }
+  /* notches every DASH_COST (30%) so you can read how many dashes are left */
+  #stam::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(30% - 1px), rgba(0,0,0,.55) calc(30% - 1px) 30%); }
   #hook.cd { color: var(--dim); }
   #styleBox { position: absolute; top: 18px; right: 22px; text-align: right; width: 240px; }
   #rank { font-size: 72px; font-weight: 700; line-height: .85; font-style: italic; transition: color .2s; }
@@ -100,8 +102,7 @@
   <div id="nav"><div id="navArrow"></div><div id="navDist"></div></div>
   <div id="speedBox"><div id="speed">0</div><div class="unit">M/S · <span id="kmh">0</span> KM/H</div><div id="speedBar"><i></i></div></div>
   <div id="bl">
-    <div class="row"><span class="lbl">SPRINT</span><span id="sprint"><i></i></span></div>
-    <div class="row"><span class="lbl">DASH</span><span class="pips" id="pips"><b><i></i></b><b><i></i></b><b><i></i></b></span></div>
+    <div class="row"><span class="lbl">STAMINA</span><span id="stam"><i></i></span></div>
     <div class="row"><span class="lbl">WALL&nbsp;J</span><span class="pips" id="wj"><b><i></i></b><b><i></i></b><b><i></i></b></span></div>
     <div class="row"><span class="lbl">HOOK</span><span id="hook">READY</span></div>
   </div>
@@ -115,9 +116,8 @@
   <div class="levels" id="levels"></div>
   <div class="grid">
     <div><span>Move / look</span><kbd>WASD + Mouse</kbd></div>
-    <div><span>Jump · wall jump</span><kbd>Space</kbd></div>
-    <div><span>Sprint (hold, meter)</span><kbd>Shift</kbd></div>
-    <div><span>Dash (3 charges)</span><kbd>Q</kbd></div>
+    <div><span>Jump · wall jump · air jump</span><kbd>Space</kbd></div>
+    <div><span>Dash (uses stamina)</span><kbd>Shift</kbd></div>
     <div><span>Crouch · slide · (air) slam</span><kbd>Ctrl / C</kbd></div>
     <div><span>Grapple (hold)</span><kbd>E / Right mouse</kbd></div>
     <div><span>Restart run</span><kbd>R</kbd></div>
@@ -125,8 +125,11 @@
   </div>
   <details class="tips"><summary>HOW TO MOVE</summary>
     <b>Wallrun:</b> jump at a red wall (or any building side) at an angle while holding W. Jump again to hop off.<br>
-    <b>Momentum:</b> speed you build up (wallruns, slides, slams, dashes) carries over on the ground as long as you keep moving. Only letting go of the keys or a hard landing kills it.<br>
-    <b>Sprint:</b> hold Shift to run faster. The meter drains while sprinting and refills when you stop.<br>
+    <b>Running:</b> you start at a jog and keep picking up speed the longer you run, with no top speed. Sharp turns cost speed.<br>
+    <b>Momentum:</b> speed you build up (running, wallruns, slides, slams, dashes) carries over as long as you keep moving. Letting go of the keys, crouching or a hard landing kills it.<br>
+    <b>Stamina:</b> dash and air jump share one meter. It refills after a short pause, and landing a roll gives a chunk back.<br>
+    <b>Dash:</b> press Shift to dash the way you're moving. Each dash costs one notch of stamina.<br>
+    <b>Air jump:</b> press Space again in the air to jump, as many times as your stamina allows (one notch each).<br>
     <b>Vault / mantle:</b> run or jump into a ledge while holding W; you keep your speed.<br>
     <b>Slide-hop / bhop:</b> jump the instant you land to skip ground friction. Air-strafe (A/D + mouse) to gain speed.<br>
     <b>Slam:</b> Ctrl in the air. Jump right after landing for a slam jump; the higher the fall, the bigger the jump.<br>
@@ -161,10 +164,14 @@ const V3 = THREE.Vector3;
 // ---------------------------------------------------------------- tuning
 const R = 0.35, H_STAND = 1.8, H_CROUCH = 1.0, EYE = 0.15, EPS = 0.001;
 const GRAV = 28, JUMP_V = 10, MAX_SPEED = 70;
-const RUN = 10, CROUCH_SPEED = 5, G_ACCEL = 10, FRICTION = 7, STOP_SPEED = 4;
-const SPRINT = 15, SPRINT_DRAIN = 22, SPRINT_REGEN = 30, SPRINT_DELAY = 0.6, SPRINT_MIN = 20;
-// above run/sprint speed on the ground, extra speed bleeds off slowly instead of hitting friction
-const MOMENTUM_DECAY = 2.5, MOMENTUM_TURN = 5;
+const RUN = 10, CROUCH_SPEED = 3.5, G_ACCEL = 10, FRICTION = 7, STOP_SPEED = 4;
+// dash and air jump share one 0-100 stamina meter. it refills after a pause, and a roll refunds some
+const STAMINA_REGEN = 20, STAMINA_DELAY = 0.8, DASH_COST = 30, ROLL_REFILL = 35;
+const AIR_JUMP_COST = 30, AIR_JUMP_V = 9.5;
+// how fast running speed steers toward the held direction
+const MOMENTUM_TURN = 5;
+// build-up running: speed gain = RUN_BUILD / (1 + speed / RUN_SOFT), so ~1.5s from jog to 36 km/h, ~6s to 72, ~12s to 108
+const RUN_START = 4.8, RUN_BUILD = 8, RUN_SOFT = 6, TURN_SCRUB = 12;
 const AIR_ACCEL = 50, AIR_CAP = 2, AIR_CONTROL = 14;
 const SLIDE_FRICTION = 0.045, SLIDE_BOOST = 4, SLIDE_MIN = 6.5;
 const DASH_SPEED = 30, DASH_T = 0.17;
@@ -770,7 +777,6 @@ let sens = load('sens', 1), baseFov = load('fov', 100), motionFx = load('fx', tr
 
 const isCrouchKey = (code) => code === 'ControlLeft' || code === 'ControlRight' || code === 'KeyC';
 const crouchDown = () => !!(keys.ControlLeft || keys.ControlRight || keys.KeyC);
-const sprintDown = () => !!(keys.ShiftLeft || keys.ShiftRight);
 addEventListener('keydown', (e) => {
   // while playing, swallow browser shortcuts (Ctrl+W/S/D...) so Ctrl works as crouch
   if (e.code === 'Space' || (state === 'play' && (e.ctrlKey || e.code.startsWith('Control')))) e.preventDefault();
@@ -784,10 +790,10 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && (state === 'play' || state === 'done')) { const wasDone = state === 'done'; restart(); if (wasDone) lockAndPlay(); return; }
   if (state !== 'play') return;
   if (e.code === 'Space') input.jumpBuf = 0.13;
-  else if (e.code === 'KeyQ') input.dashQ = true;
   else if (isCrouchKey(e.code)) input.crouchQ = true;
   else if (e.code === 'KeyE') input.grappleQ = true;
-  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyQ'].includes(e.code)) running = true;
+  else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.dashQ = true;
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(e.code)) running = true;
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; input.rmb = false; });
@@ -811,8 +817,8 @@ function resetPlayer(x, y, zz, yw = 0) {
     pos: new V3(x, y, zz), prev: new V3(x, y, zz), vel: new V3(), h: H_STAND, eye: H_STAND - EYE,
     grounded: false, coyote: 0, airT: 0, groundT: 0,
     sliding: false, slideCd: 0, slamming: false, slamT: 0, slamY: 0, preSlam: new V3(), slamWin: 0, slamPow: 0,
-    dashT: 0, dashDir: new V3(), preDash: 0, stamina: 3, wallJumps: 3,
-    sprint: 100, sprintIdle: 0, sprintLocked: false, sprinting: false,
+    dashT: 0, dashDir: new V3(), preDash: 0, wallJumps: 3,
+    stamina: 100, staminaIdle: 0,
     wr: false, wrT: 0, wrN: new V3(), wrAlong: new V3(), wrBox: null, lastWrBox: null,
     mantle: null, grapple: null, grappleCd: 0, stun: 0,
   });
@@ -939,6 +945,13 @@ function wallrunJump() {
   P.vel.y = WR_JUMP_V;
   endWallrun(); addStyle('WALL HOP', 8);
 }
+// is there a surface under the player within d metres?
+function groundWithin(d) {
+  const p = P.pos;
+  return near.some((b) => p.x + R > b.min.x && p.x - R < b.max.x && p.z + R > b.min.z && p.z - R < b.max.z &&
+    b.max.y <= p.y + 0.05 && b.max.y > p.y - d);
+}
+
 function wallJump(n) {
   const into = P.vel.x * n.x + P.vel.z * n.z;
   if (into < 0) { P.vel.x -= n.x * into; P.vel.z -= n.z * into; }
@@ -1035,6 +1048,7 @@ function land(vy) {
     if (P.slamT < ROLL_WINDOW) {
       P.vel.x = P.preSlam.x * 1.05; P.vel.z = P.preSlam.z * 1.05;
       if (crouchDown() && hspeed() > SLIDE_MIN) startSlide(true);
+      P.stamina = Math.min(100, P.stamina + ROLL_REFILL);
       addStyle('ROLL', 10); sfx(250, 120, .2, 'triangle', .08);
     } else {
       P.slamPow = Math.min(4 + (P.slamY - P.pos.y) * 0.8, 24); P.slamWin = 0.25;
@@ -1052,7 +1066,6 @@ function step(dt) {
   P.prev.copy(P.pos);
   if (++nearTick % 6 === 0 || !near.length) refreshNear();
   P.slideCd -= dt; P.grappleCd -= dt; P.stun -= dt; P.slamWin -= dt; P.coyote -= dt; input.jumpBuf -= dt;
-  P.stamina = Math.min(3, P.stamina + dt / 1.15);
   if (P.grounded) { P.groundT += dt; P.airT = 0; } else { P.airT += dt; P.groundT = 0; }
 
   const fw = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), st = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
@@ -1062,13 +1075,8 @@ function step(dt) {
   if (P.stun > 0) wish.set(0, 0, 0);
   const crouchHeld = crouchDown(), hookHeld = !!keys.KeyE || input.rmb;
 
-  // sprint meter: drains while sprinting on the ground, refills after a short pause
-  if (P.sprintLocked && P.sprint >= SPRINT_MIN) P.sprintLocked = false;
-  P.sprinting = sprintDown() && fw > 0 && !crouchHeld && !P.sprintLocked && P.sprint > 0;
-  if (P.sprinting && P.grounded && hspeed() > 1) {
-    P.sprint = Math.max(0, P.sprint - SPRINT_DRAIN * dt); P.sprintIdle = 0;
-    if (P.sprint === 0) P.sprintLocked = true;
-  } else if ((P.sprintIdle += dt) > SPRINT_DELAY) P.sprint = Math.min(100, P.sprint + SPRINT_REGEN * dt);
+  // stamina refills after a short pause since the last dash or air jump
+  if ((P.staminaIdle += dt) > STAMINA_DELAY) P.stamina = Math.min(100, P.stamina + STAMINA_REGEN * dt);
 
   if (P.mantle) { mantleStep(dt); input.dashQ = input.crouchQ = input.grappleQ = false; return; }
 
@@ -1087,8 +1095,9 @@ function step(dt) {
   // dash
   if (input.dashQ) {
     input.dashQ = false;
-    if (P.stamina >= 1) {
-      P.stamina -= 1; P.dashT = DASH_T; P.dashDir.copy(wish.lengthSq() > 0 ? wish : fwd); P.preDash = hspeed();
+    if (P.stamina >= DASH_COST && P.stun <= 0) {
+      P.stamina -= DASH_COST; P.staminaIdle = 0; P.dashT = DASH_T; P.preDash = hspeed();
+      P.dashDir.copy(wish.lengthSq() > 0 ? wish : fwd); // the way you're holding, forward if nothing
       endWallrun(); P.slamming = false; releaseGrapple(false);
       addStyle('DASH', 5); fovKick = 10; sfx(200, 1200, .15, 'sawtooth', .05);
     }
@@ -1114,9 +1123,14 @@ function step(dt) {
       if (P.sliding) { P.sliding = false; addStyle('SLIDE JUMP', 10); }
       else if (P.groundT < 0.06 && hspeed() > RUN + 1.5) addStyle('BHOP', 6);
       P.vel.y = JUMP_V; jumped = true;
-    } else if (P.wallJumps > 0) {
-      const walls = probeWalls(0.35);
+    } else {
+      const walls = P.wallJumps > 0 ? probeWalls(0.35) : [];
       if (walls.length) { wallJump(walls[0].n); jumped = true; }
+      // air jump for stamina, unless we'll land inside the jump buffer window (that press is a bhop)
+      else if (!P.slamming && P.stamina >= AIR_JUMP_COST && !groundWithin(Math.max(0.5, -P.vel.y * 0.13))) {
+        P.stamina -= AIR_JUMP_COST; P.staminaIdle = 0; P.dashT = 0;
+        P.vel.y = Math.max(P.vel.y, AIR_JUMP_V); addStyle('AIR JUMP', 6); jumped = true;
+      }
     }
     if (jumped) { input.jumpBuf = 0; P.grounded = false; P.coyote = 0; P.slamWin = 0; sfx(420, 640, .1, 'triangle', .05); }
   }
@@ -1136,16 +1150,19 @@ function step(dt) {
   else if (P.wr) wallrunStep(dt);
   else if (P.slamming) { P.slamT += dt; P.vel.y = -SLAM_V; }
   else if (P.grounded && !jumped) {
-    const target = crouchHeld ? CROUCH_SPEED : P.sprinting ? SPRINT : RUN, hs = hspeed();
+    // running: start at a jog and keep gaining speed in whatever direction you hold
+    const hs = hspeed();
     const braking = hs > 0.1 && (P.vel.x * wish.x + P.vel.z * wish.z) / hs < -0.3; // holding back on purpose
-    if (!P.sliding && !crouchHeld && P.stun <= 0 && wish.lengthSq() > 0 && hs > target && !braking) {
-      // carrying momentum: bleed slowly toward target speed and steer toward the input direction
-      const ns = Math.max(target, hs - MOMENTUM_DECAY * dt);
+    if (!P.sliding && !crouchHeld && P.stun <= 0 && wish.lengthSq() > 0 && hs > RUN_START - 0.5 && !braking) {
+      // each extra km/h takes longer but there's no ceiling; steer toward the input, turning hard scrubs speed
+      const align = (P.vel.x * wish.x + P.vel.z * wish.z) / hs;
+      const gain = RUN_BUILD / (1 + hs / RUN_SOFT);
+      const ns = Math.max(RUN_START, hs + (align > 0.5 ? gain * align : -TURN_SCRUB * (0.5 - align)) * dt);
       const nx = P.vel.x / hs + wish.x * MOMENTUM_TURN * dt, nz = P.vel.z / hs + wish.z * MOMENTUM_TURN * dt, l = Math.hypot(nx, nz);
       P.vel.x = nx / l * ns; P.vel.z = nz / l * ns;
     } else if (!P.sliding) {
       friction(dt, 1);
-      accelerate(target, G_ACCEL, dt);
+      accelerate(crouchHeld ? CROUCH_SPEED : RUN_START, G_ACCEL, dt);
     } else friction(dt, SLIDE_FRICTION);
     if (P.sliding) {
       const hs = hspeed();
@@ -1379,7 +1396,7 @@ function drawSpeedLines(hs) {
 // ---------------------------------------------------------------- hud
 const $ = (id) => document.getElementById(id);
 const hud = { timer: $('timer'), cp: $('cpText'), best: $('best'), speed: $('speed'), kmh: $('kmh'), bar: $('speedBar').firstElementChild,
-  sprint: $('sprint'), pips: [...$('pips').querySelectorAll('i')], wj: [...$('wj').querySelectorAll('i')], hook: $('hook'), cross: $('cross'),
+  stam: $('stam'), wj: [...$('wj').querySelectorAll('i')], hook: $('hook'), cross: $('cross'),
   rank: $('rank'), meter: $('meter').firstElementChild, feed: $('feed'), lvl: $('lvlName'), nav: $('nav'), navArrow: $('navArrow'), navDist: $('navDist') };
 function fmt(t) { if (t === null) return '—'; const m = Math.floor(Math.abs(t) / 60), s = Math.abs(t) % 60; return (t < 0 ? '-' : '') + m + ':' + s.toFixed(2).padStart(5, '0'); }
 let feedTick = 0;
@@ -1399,9 +1416,8 @@ function updateHud(dt, hs, canHook) {
   }
   hud.speed.textContent = hs.toFixed(0); hud.kmh.textContent = (hs * 3.6).toFixed(0);
   hud.bar.style.width = Math.min(hs / 45, 1) * 100 + '%';
-  hud.sprint.firstElementChild.style.width = P.sprint + '%';
-  hud.sprint.classList.toggle('empty', P.sprintLocked);
-  hud.pips.forEach((p, i) => { p.style.width = clamp(P.stamina - i, 0, 1) * 100 + '%'; });
+  hud.stam.firstElementChild.style.width = P.stamina + '%';
+  hud.stam.classList.toggle('low', P.stamina < DASH_COST);
   hud.wj.forEach((p, i) => { p.style.width = (i < P.wallJumps ? 100 : 0) + '%'; });
   hud.hook.textContent = P.grapple ? 'ATTACHED' : P.grappleCd > 0 ? 'COOLDOWN' : 'READY';
   hud.hook.className = P.grappleCd > 0 && !P.grapple ? 'cd' : '';
