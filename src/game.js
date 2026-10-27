@@ -3,7 +3,6 @@ import { save, fmt } from './utils.js';
 import { game } from './state.js';
 import { cpMats, pillar } from './render/materials.js';
 import { cps, level } from './world/world.js';
-import { HALF_W } from './world/line.js';
 import { LEVELS, lapsOf } from './world/levels.js';
 import { sfx } from './audio.js';
 import { P, resetPlayer } from './player/player.js';
@@ -22,7 +21,8 @@ export function setCpMats() {
 export function checkCheckpoint() {
   const c = cps[game.cpIndex];
   if (!c) return;
-  const hit = c.plane ? P.pos.z < c.z && Math.abs(P.pos.x - c.x) < HALF_W + 3 && P.pos.y > c.y - 12
+  const dx = P.pos.x - c.x, dz = P.pos.z - c.z;
+  const hit = c.plane ? dx * c.dir.x + dz * c.dir.z > 0 && Math.abs(dx * c.dir.z - dz * c.dir.x) < c.halfW + 3 && P.pos.y > c.y - 12
     : Math.hypot(P.pos.x - c.x, P.pos.z - c.z) < 5.5 && P.pos.y > c.top - 2 && P.pos.y < c.top + 9;
   if (hit) {
     game.cpIndex++;
@@ -46,7 +46,7 @@ export function respawn() {
   // on lap 2+ the last checkpoint passed before index 0 is the start/finish line
   const c = cps[game.cpIndex - 1] || (game.lap > 1 ? cps[cps.length - 1] : null);
   const s = level.spawn;
-  if (c) resetPlayer(c.x, c.top + EPS, c.plane ? c.z - 1 : c.z, c.yaw); else resetPlayer(s.x, s.y, s.z, s.yaw);
+  if (c) resetPlayer(c.plane ? c.x + c.dir.x : c.x, c.top + EPS, c.plane ? c.z + c.dir.z : c.z, c.yaw); else resetPlayer(s.x, s.y, s.z, s.yaw);
   game.falls++; style.meter = 0; refreshNear();
   flash('RESPAWN', '#ff9a7a');
 }

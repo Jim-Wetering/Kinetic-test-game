@@ -13,6 +13,7 @@ import { style, addStyle } from '../ui/style.js';
 import { flash } from '../ui/hud.js';
 import { P, fwd, wish, tmp, tmp2, hspeed } from './player.js';
 import { probeWalls, clearAt, rayBox } from './collision.js';
+import { cue } from './anim.js';
 
 // ---------------------------------------------------------------- ground / air movement
 export function friction(dt, scale) {
@@ -92,13 +93,14 @@ export function wallrunJump() {
   P.vel.x = P.wrAlong.x * sp + P.wrN.x * WR_PUSH + fwd.x * 3;
   P.vel.z = P.wrAlong.z * sp + P.wrN.z * WR_PUSH + fwd.z * 3;
   P.vel.y = WR_JUMP_V;
+  cue('push', { n: P.wrN.clone() });
   endWallrun(); addStyle('WALL HOP', 8);
 }
 export function wallJump(n) {
   const into = P.vel.x * n.x + P.vel.z * n.z;
   if (into < 0) { P.vel.x -= n.x * into; P.vel.z -= n.z * into; }
   P.vel.x += n.x * WJ_PUSH; P.vel.z += n.z * WJ_PUSH; P.vel.y = Math.max(P.vel.y, WJ_V);
-  P.wallJumps--; addStyle('WALL JUMP', 7);
+  P.wallJumps--; addStyle('WALL JUMP', 7); cue('push', { n: n.clone() });
 }
 
 // ---------------------------------------------------------------- grapple
@@ -159,6 +161,7 @@ export function tryLedge(b, ax, sgn, preVel) {
   P.mantle = { sx: P.pos.x, sy: P.pos.y, sz: P.pos.z, ex: tx, ey: ty, ez: tz, t: 0, dur: vault ? 0.12 : 0.1 + ledge * 0.07, vx, vz };
   setHeight(h);
   endWallrun(); releaseGrapple(false); P.dashT = 0;
+  cue('ledge', { vault, dur: P.mantle.dur });
   addStyle(vault ? 'SPEED VAULT' : 'MANTLE', vault ? 7 : 6);
   sfx(vault ? 600 : 300, vault ? 900 : 500, .12, 'triangle', .06);
   return 'mantle';
@@ -183,13 +186,13 @@ export function land(vy) {
       P.vel.x = P.preSlam.x * 1.05; P.vel.z = P.preSlam.z * 1.05;
       if (crouchDown() && hspeed() > SLIDE_MIN) startSlide(true);
       P.stamina = Math.min(100, P.stamina + ROLL_REFILL);
-      addStyle('ROLL', 10); sfx(250, 120, .2, 'triangle', .08);
+      addStyle('ROLL', 10); cue('roll'); sfx(250, 120, .2, 'triangle', .08);
     } else {
       P.slamPow = Math.min(4 + (P.slamY - P.pos.y) * 0.8, 24); P.slamWin = 0.25;
-      shockwave(P.pos); shake(0.45); addStyle('SLAM', 8); sfx(120, 30, .4, 'sawtooth', .12);
+      shockwave(P.pos); shake(0.45); addStyle('SLAM', 8); cue('slam'); sfx(120, 30, .4, 'sawtooth', .12);
     }
   } else if (impact > HARD_LAND) {
-    P.vel.x *= 0.35; P.vel.z *= 0.35; P.stun = 0.3; shake(0.5);
+    P.vel.x *= 0.35; P.vel.z *= 0.35; P.stun = 0.3; shake(0.5); cue('hardland');
     style.meter *= 0.5; flash('HARD LANDING · tap Ctrl just before impact to roll', '#ff9a7a');
     sfx(90, 40, .3, 'square', .1);
   } else if (impact > 6) sfx(140, 60, .08, 'sine', .08);
