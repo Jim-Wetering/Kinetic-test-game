@@ -1,0 +1,19 @@
+{
+  "name": "kinetic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "First-person rooftop parkour time-trial",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/rajdhani": "^5.3.0",
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}
