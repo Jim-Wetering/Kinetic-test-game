@@ -2,19 +2,36 @@
 
 A first-person rooftop parkour time-trial that runs in the browser. Chain wallruns, slides, dashes, slams and grapples across procedurally laid-out city districts, and keep your momentum to set a best time on each course.
 
-The whole game is a single HTML file built on [three.js](https://threejs.org/) (r128, loaded from cdnjs). There's no build step and nothing to install.
+It's built on [three.js](https://threejs.org/) (r128) with plain JavaScript modules, bundled by [Vite](https://vite.dev/). Everything, including three.js and the font, is installed through npm, so the game runs offline.
 
 ## Running it
 
-Open `kinetic/index.html` in a modern desktop browser, pick a level and click to start. The game needs a mouse and keyboard and uses pointer lock for mouse look.
-
-If your browser blocks local files, serve the folder instead:
+You need [Node.js](https://nodejs.org/) 20 or newer.
 
 ```sh
-cd kinetic
-python -m http.server 8000
-# then open http://localhost:8000
+npm install      # once
+npm run dev      # play in the browser with live reload while you edit
+npm run build    # production build into dist/
+npm run preview  # serve the production build
 ```
+
+### Desktop app (Windows .exe)
+
+The game is wrapped in [Electron](https://www.electronjs.org/) for a standalone desktop version.
+
+```sh
+npm start        # build and open the game in a desktop window
+npm run dist     # build Windows executables into release/
+```
+
+`npm run dist` makes two files in `release/`:
+
+- `Kinetic Setup <version>.exe`: an installer with a Start menu shortcut and uninstaller
+- `Kinetic-<version>-portable.exe`: a single exe you can run from anywhere without installing
+
+The exes aren't code-signed, so Windows SmartScreen may warn the first time you run them ("More info" → "Run anyway").
+
+Pick a level and click to start. The game needs a mouse and keyboard and uses pointer lock for mouse look.
 
 ## Controls
 
@@ -59,6 +76,19 @@ Best times, the last level played and your settings (mouse sensitivity, FOV, spe
 ## Project layout
 
 ```
-kinetic/
-  index.html   game: markup, styles, level generation, physics, audio and HUD
+index.html            HUD and menu markup; loads src/main.js
+electron/main.cjs     desktop window for the .exe build
+src/
+  main.js             startup and the frame loop (camera, effects, rendering)
+  config.js           movement tuning constants
+  state.js            shared run state, view angles and settings
+  utils.js            seeded rng, local storage, time formatting
+  game.js             checkpoints, laps, respawn, restart, finish
+  audio.js            footsteps and sound effects (Web Audio)
+  input.js            keyboard and mouse
+  style.css           HUD and menu styles
+  render/             renderer, sky, toon materials, geometry batching, themes, camera fx
+  world/              level building, the district and line generators, level list
+  player/             player state, collision, moves (wallrun, grapple, vault...), physics step
+  ui/                 HUD, style meter, level select and settings
 ```
