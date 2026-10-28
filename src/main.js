@@ -2,11 +2,14 @@ import * as THREE from 'three';
 import '@fontsource/rajdhani/500.css';
 import '@fontsource/rajdhani/600.css';
 import '@fontsource/rajdhani/700.css';
+import '@fontsource/oswald/500.css';
+import '@fontsource/oswald/700.css';
 import './style.css';
 import { EYE } from './config.js';
 import { clamp, load } from './utils.js';
 import { game, look, settings } from './state.js';
-import { renderer, scene, cam, camDir, sky } from './render/scene.js';
+import { cam, camDir, sky } from './render/scene.js';
+import { renderFrame } from './render/post.js';
 import { camfx, rope, initResize, drawSpeedLines, updateShockwaves } from './render/effects.js';
 import { anchors, cps } from './world/world.js';
 import { LEVELS, loadLevel } from './world/levels.js';
@@ -91,7 +94,8 @@ function frame(now) {
 
   // world fx
   const t = now / 1000;
-  for (const a of anchors) { a.mesh.rotation.y = t * 1.5; a.ring.rotation.x = t * 0.8; }
+  // hook blocks turn slowly on their cables; the target ring spins so they read from afar
+  for (const a of anchors) { a.mesh.rotation.y = Math.sin(t * 0.5 + a.center.x) * 0.6; a.ring.rotation.x = t * 0.8; }
   const nc = cps[game.cpIndex];
   if (nc) nc.mesh.scale.setScalar(1 + Math.sin(t * 5) * 0.06);
   updateShockwaves(dt);
@@ -103,8 +107,7 @@ function frame(now) {
   }
 
   updateHud(dt, hs, canHook);
-  renderer.render(scene, cam);
-  renderViewmodel();
+  renderFrame(t, renderViewmodel);
   drawSpeedLines(hs);
 }
 requestAnimationFrame(frame);
