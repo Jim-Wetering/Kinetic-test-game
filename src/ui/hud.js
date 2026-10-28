@@ -1,4 +1,4 @@
-import { DASH_COST } from '../config.js';
+import { DASH_COST, MAX_HSPEED } from '../config.js';
 import { clamp, fmt } from '../utils.js';
 import { game, look } from '../state.js';
 import { cps } from '../world/world.js';
@@ -49,7 +49,7 @@ export function updateHud(dt, hs, canHook) {
     if (tick) put(hud.navDist, 'text', Math.round(Math.hypot(dx, dz)) + ' M');
   }
   if (tick) { put(hud.speed, 'text', hs.toFixed(0)); put(hud.kmh, 'text', (hs * 3.6).toFixed(0)); }
-  fill(hud.bar, hs / 45);
+  fill(hud.bar, hs / MAX_HSPEED);
   fill(hud.stam.firstElementChild, P.stamina / 100);
   put(hud.stam, 'class', P.stamina < DASH_COST ? 'low' : '');
   hud.wj.forEach((p, i) => fill(p, i < P.wallJumps ? 1 : 0));

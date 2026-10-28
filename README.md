@@ -57,7 +57,7 @@ Pick a level and click to start. The game needs a mouse and keyboard and uses po
 
 ## Movement
 
-- **Running:** you start at a jog and keep picking up speed the longer you run in any direction, with no top speed. Each extra km/h takes a bit longer, and sharp turns cost speed.
+- **Running:** you start at a jog and keep picking up speed the longer you run in any direction, up to a top speed of 90 km/h. Each extra km/h takes a bit longer, and sharp turns cost speed.
 - **Wallrun:** jump at a wall at an angle while holding W. Jump again to kick off.
 - **Momentum:** speed from running, wallruns, slides, slams and dashes carries over as long as you keep moving. Letting go of the keys, crouching or landing hard kills it.
 - **Vault / mantle:** run or jump into a ledge while holding W and you keep your speed.
