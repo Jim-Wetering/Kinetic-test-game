@@ -5,9 +5,9 @@ import { scene } from '../render/scene.js';
 import { Batch, Edges } from '../render/batch.js';
 import { matToon, matFacade, matCopeX, matCopeZ, matCloud, matCloudHull, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
   brushRingGeo } from '../render/materials.js';
-import { FLOOR, PARAPET, BAY } from '../render/ink.js';
+import { FLOOR, PARAPET, BAY, FACADE } from '../render/ink.js';
 import { Decals, artCell } from '../render/graffiti.js';
-import { BrushTowers } from '../render/strokes.js';
+import { BrushTowers, TOWER } from '../render/strokes.js';
 import { theme, C, pick, jitter } from '../render/themes.js';
 
 // ---------------------------------------------------------------- world
@@ -77,6 +77,14 @@ function faceDecal(F, t, y1, w, top, cell, off = 0.06) {
 const bays = (len) => { const n = Math.max(1, Math.floor(len / BAY)); return { n, w: len / n }; };
 
 // ---------------------------------------------------------------- buildings
+// what a block is built of, going by its colour: red and orange walls are mostly brick, pale warm ones stone,
+// and the rest render or, for the taller ones, office glazing
+function facadeStyle(c, h, a) {
+  const warm = c.r - c.b, light = (c.r + c.g + c.b) / 3;
+  if (warm > 0.22 && light < 0.7) return a() < 0.8 ? FACADE.BRICK : FACADE.RENDER;
+  if (warm > 0.1 && light >= 0.7) return a() < 0.5 ? FACADE.STONE : FACADE.RENDER;
+  return a() < (h > 70 ? 0.6 : 0.35) ? FACADE.OFFICE : a() < 0.4 ? FACADE.STONE : FACADE.RENDER;
+}
 // a block of real proportions: rendered walls with a window grid (3.5 m floors under a parapet band), some
 // blank party walls, and a stone coping around the roof edge. returns the blank-side mask
 function block(x0, y0, z0, x1, y1, z1, c, roof, a) {
@@ -86,7 +94,7 @@ function block(x0, y0, z0, x1, y1, z1, c, roof, a) {
     if (len < 4 || a() < (len < 9 ? 0.45 : 0.2)) blank |= 1 << s;
   }
   if (blank === 15) blank = 14;
-  BF.box(x0, y0, z0, x1, y1, z1, c, roof, false, blank);
+  BF.box(x0, y0, z0, x1, y1, z1, c, roof, false, blank, facadeStyle(c, y1 - y0, a));
   HB.box(x0 - 0.18, y0, z0 - 0.18, x1 + 0.18, y1 + 0.18, z1 + 0.18, c);
   E.box(x0, y0, z0, x1, y1, z1);
   // coping: a pale cap a hair proud of the roof and lapping down the wall, painted as a dry-brush highlight
@@ -303,7 +311,7 @@ export function backdrop(bd) {
     // far from the course a tower is just one big brush stroke; nearer ones are built properly
     const off = Math.hypot(Math.max(bd.x0 - x, 0, x - bd.x1), Math.max(bd.z0 - zz, 0, zz - bd.z1));
     if (off > STROKE_FROM) {
-      ST.add(x, zz, -90, top, (w + d) / 2, c, a() * 100);
+      strokeTower(x, zz, top, (w + d) / 2, c, a);
     } else if (a() < 0.4 && Math.min(w, d) > 20) {
       // a podium with a slimmer tower set back on it
       const mid = top - a(14, 45), ins = a(3, Math.min(w, d) * 0.22), c2 = a() < 0.5 ? c : jitter(pick(T.bld));
@@ -330,6 +338,18 @@ export function backdrop(bd) {
   }
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), matGround);
   ground.rotation.x = -Math.PI / 2; ground.position.y = -90; world.add(ground);
+}
+// a far tower as one brush stroke, with a silhouette of its own: mostly slabs and setbacks, some with a mast, a
+// penthouse or a slanted roof. now and then a landmark: far taller and slimmer than its neighbours, stepped or
+// topped with a spire, so the skyline has a few high points to read against
+function strokeTower(x, z, top, w, c, a) {
+  const seed = a() * 100;
+  if (a() < 0.07) {
+    ST.add(x, z, -90, top + a(70, 140), w * 0.8, c, seed, a() < 0.5 ? TOWER.SPIRE : TOWER.SETBACK, a(25, 60));
+    return;
+  }
+  const r = a(), shape = r < 0.35 ? TOWER.SLAB : r < 0.6 ? TOWER.SETBACK : r < 0.72 ? TOWER.SPIRE : r < 0.87 ? TOWER.CROWN : TOWER.SLANT;
+  ST.add(x, z, -90, top, w, c, seed, shape, shape === TOWER.SPIRE ? a(12, 35) : shape === TOWER.CROWN ? a(5, 10) : 0);
 }
 // a painted sign or a mural on one of a skyline tower's blank walls
 function backdropArt(x0, z0, x1, z1, y1, blank, a) {

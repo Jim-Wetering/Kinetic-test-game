@@ -26,6 +26,8 @@ export { NOISE };
 // window grid, in metres. floors are measured down from the roof, under a parapet band; bays are fitted to
 // each face so every face starts and ends on a pier
 export const FLOOR = 3.5, PARAPET = 1.4, BAY = 3.1;
+// facade styles: what a building's walls are made of, and the windows that go with it
+export const FACADE = { RENDER: 0, BRICK: 1, OFFICE: 2, STONE: 3 };
 // distances (m) where drawing gives way to painting: past PAINT_NEAR detail turns into brush strokes of colour,
 // and black ink outlines fade out between INK_NEAR and INK_FAR, leaving far shapes as strokes of their own colour
 export const PAINT_NEAR = 110, INK_NEAR = 130, INK_FAR = 300;
@@ -34,8 +36,8 @@ const vertexShader = `
   uniform vec3 uBase;
   varying vec3 vN, vW, vC; varying float vDepth;
   #ifdef FACADE
-    attribute vec4 aLo; attribute vec2 aFac;
-    varying vec4 vLo; varying vec2 vFac;
+    attribute vec4 aLo; attribute vec3 aFac;
+    varying vec4 vLo; varying vec3 vFac;
   #endif
   void main() {
     #ifdef USE_COLOR
@@ -57,7 +59,7 @@ const fragmentShader = `
   uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit, uMark;
   varying vec3 vN, vW, vC; varying float vDepth;
   #ifdef FACADE
-    varying vec4 vLo; varying vec2 vFac;
+    varying vec4 vLo; varying vec3 vFac;
   #endif
   ${NOISE}
   // 1 inside [a, b], with edges softened over w
@@ -89,6 +91,11 @@ const fragmentShader = `
       bool xFace = abs(n.x) > 0.5;
       float side = xFace ? (n.x > 0.0 ? 0.0 : 1.0) : (n.z > 0.0 ? 2.0 : 3.0);
       float blank = mod(floor(vFac.y / pow(2.0, side)), 2.0);
+      // the coping casts a soft shadow line onto the wall just under it
+      if (vert > 0.5) {
+        float under = vFac.x - vW.y, uw = fwidth(vW.y);
+        col *= 1.0 - 0.28 * band(under, 0.75, 0.92, uw) * (1.0 - smoothstep(60.0, 160.0, vDepth));
+      }
       if (vert > 0.5 && blank < 0.5) {
         float along = xFace ? vW.z - vLo.y : vW.x - vLo.x;
         float len = xFace ? vLo.w - vLo.y : vLo.z - vLo.x;
@@ -97,19 +104,66 @@ const fragmentShader = `
         float below = vFac.x - ${PARAPET.toFixed(2)} - vW.y, fl = floor(below / ${FLOOR.toFixed(2)});
         float lv = below - fl * ${FLOOR.toFixed(2)};
         float aa = max(fwidth(along), fwidth(vW.y)) * 0.75;
-        float ww = min(bw * 0.28, 0.8), inside = step(0.0, below);
-        float pane = inside * band(lu, ww, bw - ww, aa) * band(lv, 0.55, 2.25, aa);
-        float frame = pane - inside * band(lu, ww + 0.09, bw - ww - 0.09, aa) * band(lv, 0.64, 2.16, aa);
-        float sill = inside * band(lu, ww - 0.12, bw - ww + 0.12, aa) * band(lv, 2.25, 2.4, aa);
+        int sty = int(vFac.z + 0.5);
+        // each style sets its pane: margin to the piers either side (ww), and its top and bottom measured down
+        // from the top of the floor. render: plain punched windows; brick: tall narrow sashes; office: ribbon
+        // glazing with slim mullions; stone: tall windows in pale surrounds
+        float ww = min(bw * 0.28, 0.8), wt = 0.55, wb = 2.25;
+        if (sty == ${FACADE.BRICK}) { ww = min(bw * 0.34, 0.98); wt = 0.45; wb = 2.5; }
+        else if (sty == ${FACADE.OFFICE}) { ww = 0.07; wt = 0.4; wb = 2.25; }
+        else if (sty == ${FACADE.STONE}) { ww = min(bw * 0.31, 0.88); wt = 0.5; wb = 2.4; }
+        float inside = step(0.0, below);
+        float pane = inside * band(lu, ww, bw - ww, aa) * band(lv, wt, wb, aa);
+        float frame = pane - inside * band(lu, ww + 0.09, bw - ww - 0.09, aa) * band(lv, wt + 0.09, wb - 0.09, aa);
+        float sill = inside * band(lu, ww - 0.12, bw - ww + 0.12, aa) * band(lv, wb, wb + 0.15, aa) * float(sty != ${FACADE.OFFICE});
         float h = hash(vec2(cell, fl) + vLo.xy * 0.37);
-        // glass reflects the sky, brighter toward the top of each pane, with a little variation per window
-        vec3 glass = mix(uGlass, uSkyRef, 0.45 * (1.0 - (lv - 0.55) / 1.7) * (0.5 + h)) * mix(0.75, 1.0, lit);
-        float on = step(1.0 - uLit, hash(vec2(fl, cell) + vLo.zw * 0.21 + 3.7));
-        glass = mix(glass, uLitCol * (0.8 + 0.3 * h), on);
-        col = mix(col, glass, pane);
-        // the thin frames and sills go first, before they're thinner than a pixel
         float fine = 1.0 - smoothstep(50.0, 130.0, vDepth);
-        col = mix(col, uInkCol, frame * fine * 0.55);
+        // what the wall is built of, hinted rather than drawn out: brick courses and stone joints show only in a few
+        // patches, the way an illustrator suggests a material, and fade before they could shimmer
+        float wall = 1.0 - inside * band(lu, ww - 0.2, bw - ww + 0.2, aa) * band(lv, wt - 0.3, wb + 0.18, aa);
+        float patchy = smoothstep(0.58, 0.72, noise(vec2(along, vW.y) * 0.3 + vLo.xy * 0.11));
+        if (sty == ${FACADE.BRICK}) {
+          float ry = vW.y / 0.09, bx = along / 0.24 + floor(ry) * 0.5;
+          float mortar = max(band(fract(ry), -1.0, 0.13, fwidth(ry)), band(fract(bx), -1.0, 0.07, fwidth(bx)));
+          col = mix(col, uInkCol, mortar * patchy * wall * 0.32 * keep(11.0, vW.y) * keep(4.2, along));
+          // a soldier course of darker brick over each window
+          float lintel = inside * band(lu, ww - 0.1, bw - ww + 0.1, aa) * band(lv, wt - 0.26, wt, aa);
+          col = mix(col, base * 0.72 * light, lintel);
+        } else if (sty == ${FACADE.STONE}) {
+          float ry = vW.y / 0.6, bx = along / 1.1 + floor(ry) * 0.5;
+          float joint = max(band(fract(ry), -1.0, 0.03, fwidth(ry)), band(fract(bx), -1.0, 0.02, fwidth(bx)));
+          col = mix(col, uInkCol, joint * patchy * wall * 0.3 * fine);
+          // pale dressed-stone surrounds, a string course at every floor, and quoins stacked up the corners
+          float surround = inside * band(lu, ww - 0.18, bw - ww + 0.18, aa) * band(lv, wt - 0.2, wb, aa) - pane;
+          float course = inside * band(lv, ${FLOOR.toFixed(2)} - 0.2, ${FLOOR.toFixed(2)}, aa);
+          float edge = min(along, len - along), qw = mod(floor(vW.y / 0.5), 2.0) > 0.5 ? 0.75 : 0.5;
+          float quoin = step(edge, qw) * (1.0 - band(fract(vW.y / 0.5), -1.0, 0.05, fwidth(vW.y / 0.5)) * fine);
+          col = mix(col, base * 1.16 * light, max(max(surround, course), quoin) * fine);
+        } else if (sty == ${FACADE.OFFICE}) {
+          // precast spandrel panels: a joint across the middle of each, and one at every mullion
+          float joint = inside * band(lv, 2.95, 3.0, aa) + inside * band(lu, -1.0, 0.03, aa) * (1.0 - pane);
+          col = mix(col, uInkCol, min(joint, 1.0) * fine * 0.4);
+        }
+        // glass reflects the sky, brighter toward the top of each pane, with a little variation per window
+        float pv = (lv - wt) / (wb - wt);
+        vec3 glass = mix(uGlass, uSkyRef, 0.45 * (1.0 - pv) * (0.5 + h)) * mix(0.75, 1.0, lit);
+        float on = step(1.0 - uLit, hash(vec2(fl, cell) + vLo.zw * 0.21 + 3.7));
+        // some windows have a blind pulled part way down: pale slats that glow warm when the room is lit
+        float blind = step(sty == ${FACADE.OFFICE} ? 0.82 : 0.62, hash(vec2(cell, fl) + vLo.zw * 0.13 + 9.1));
+        float drop = 0.15 + 0.6 * hash(vec2(fl, cell) + 1.3), ry = lv / 0.07;
+        float slats = 1.0 - 0.18 * band(fract(ry), -1.0, 0.2, fwidth(ry)) * keep(14.0, vW.y);
+        vec3 blindCol = mix(vec3(0.86, 0.83, 0.76) * light * slats, uLitCol * 0.95, on * 0.75);
+        glass = mix(glass, uLitCol * (0.8 + 0.3 * h), on);
+        glass = mix(glass, blindCol, blind * step(pv, drop));
+        // the panes sit back in the wall: the head and one jamb of each reveal are in shadow
+        float reveal = max(1.0 - smoothstep(wt + 0.09, wt + 0.3, lv), 1.0 - smoothstep(ww + 0.09, ww + 0.24, lu));
+        glass *= 1.0 - 0.3 * reveal * fine * (1.0 - on * 0.5);
+        col = mix(col, glass, pane);
+        // the thin frames, glazing bars and sills go first, before they're thinner than a pixel. punched windows
+        // are split by a centre bar, sashes by a meeting rail
+        float bar = sty == ${FACADE.BRICK} ? band(lv, (wt + wb) * 0.5 - 0.03, (wt + wb) * 0.5 + 0.03, aa)
+                  : sty == ${FACADE.OFFICE} ? 0.0 : band(lu, bw * 0.5 - 0.03, bw * 0.5 + 0.03, aa);
+        col = mix(col, uInkCol, max(frame, bar * pane) * fine * 0.55);
         col = mix(col, base * 1.12 * light, sill * fine);
         // in the distance the grid gives way to painting: the wall goes to one flat colour and the windows become
         // a few big dabs on a coarse grid (~11 x 9 m), each a handful of brush hairs laid side by side. at night they're
