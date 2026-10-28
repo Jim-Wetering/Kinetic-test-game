@@ -15,6 +15,14 @@ npm run build    # production build into dist/
 npm run preview  # serve the production build
 ```
 
+### Single HTML file
+
+```sh
+npm run build:html   # builds dist-html/index.html
+```
+
+This puts the whole game (three.js, scripts, styles and fonts) into one standalone `index.html` of about 1.7 MB. Double-click it to play in any modern browser. It needs no server or internet connection, so you can copy it anywhere or send it to someone. The build uses its own config, `vite.html.config.js`, so the desktop app build isn't affected.
+
 ### Desktop app (Windows .exe)
 
 The game is wrapped in [Electron](https://www.electronjs.org/) for a standalone desktop version.
@@ -49,7 +57,7 @@ Pick a level and click to start. The game needs a mouse and keyboard and uses po
 
 ## Movement
 
-- **Running:** you start at a jog and keep picking up speed the longer you run in any direction, with no top speed. Each extra km/h takes a bit longer, and sharp turns cost speed.
+- **Running:** you start at a jog and keep picking up speed the longer you run in any direction, up to a top speed of 90 km/h. Each extra km/h takes a bit longer, and sharp turns cost speed.
 - **Wallrun:** jump at a wall at an angle while holding W. Jump again to kick off.
 - **Momentum:** speed from running, wallruns, slides, slams and dashes carries over as long as you keep moving. Letting go of the keys, crouching or landing hard kills it.
 - **Vault / mantle:** run or jump into a ledge while holding W and you keep your speed.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { renderer, scene, cam, hemi, sun } from './scene.js';
-import { toonRamp, matHull } from './materials.js';
+import { renderer, scene, cam } from './scene.js';
+import { matHull } from './materials.js';
+import { inkMat } from './ink.js';
 import { look } from '../state.js';
 import { pose, VM_FOV, SHOULDER, HIP_W, viewToWorld } from '../player/anim.js';
 
@@ -9,14 +10,15 @@ import { pose, VM_FOV, SHOULDER, HIP_W, viewToWorld } from '../player/anim.js';
 // stretch with the speed FOV kick. legs and torso stand in the world, so floors and walls hide them
 const vmScene = new THREE.Scene();
 const vmCam = new THREE.PerspectiveCamera(VM_FOV, 1, 0.01, 10);
-const vmHemi = new THREE.HemisphereLight(), vmSun = new THREE.DirectionalLight();
-vmScene.add(vmCam, vmHemi, vmSun);
+vmScene.add(vmCam);
 const body = new THREE.Group(); scene.add(body);
 
-const toon = (hex) => new THREE.MeshToonMaterial({ color: hex, gradientMap: toonRamp });
-const M = { sleeve: toon(0x2b3346), skin: toon(0xd69a74), glove: toon(0x3a404c), accent: toon(0xff3b1f),
-  pants: toon(0x3a4150), sole: toon(0xf2f2f2) };
-const ARM_A = 0.3, ARM_B = 0.28, LEG_A = 0.46, LEG_B = 0.45, INK_ARM = 0.006, INK_HAND = 0.0035, INK_LEG = 0.012;
+// street-runner outfit: a worn olive jacket, charcoal cargo pants, a burnt-orange trim and grey trainers. the ink shader lights
+// both passes from the theme; the arms skip fog since they're always right in front of you
+const toon = (hex, fog = true) => inkMat({ color: hex, fog });
+const M = { sleeve: toon(0x5a5e46, false), skin: toon(0xb08468, false), glove: toon(0x2a2a2c, false), accent: toon(0xc8602a, false),
+  pants: toon(0x34363a), sole: toon(0xe6e2d8), torso: toon(0x5a5e46), kicks: toon(0x8a8c8e) };
+const ARM_A = 0.3, ARM_B = 0.28, LEG_A = 0.46, LEG_B = 0.45, INK_ARM = 0.014, INK_HAND = 0.008, INK_LEG = 0.024;
 
 // a mesh with a slightly bigger back-face hull: the same ink outline the world uses
 function inked(geo, hull, mat) { const m = new THREE.Mesh(geo, mat); m.add(new THREE.Mesh(hull, matHull)); return m; }
@@ -66,12 +68,12 @@ const arms = [-1, 1].map((s, i) => {
   return { i, upper, fore, hand: h, shoulder: new THREE.Vector3(SHOULDER[0] * s, SHOULDER[1], SHOULDER[2]) };
 });
 const pelvis = box(0.3, 0.17, 0.2, 0, 0, 0, M.pants, INK_LEG);
-const torso = box(0.32, 0.4, 0.18, 0, 0.2, 0, M.sleeve, INK_LEG);
+const torso = box(0.32, 0.4, 0.18, 0, 0.2, 0, M.torso, INK_LEG);
 body.add(pelvis, torso);
 const legs = [-1, 1].map((s, i) => {
   const thigh = limb(0.075, 0.058, LEG_A, M.pants, INK_LEG), shin = limb(0.058, 0.045, LEG_B, M.pants, INK_LEG);
   const shoe = new THREE.Group();
-  shoe.add(box(0.1, 0.085, 0.26, 0, -0.03, -0.07, M.accent, INK_LEG), box(0.104, 0.025, 0.264, 0, -0.075, -0.07, M.sole, INK_LEG));
+  shoe.add(box(0.1, 0.085, 0.26, 0, -0.03, -0.07, M.kicks, INK_LEG), box(0.104, 0.025, 0.264, 0, -0.075, -0.07, M.sole, INK_LEG));
   body.add(thigh, shin, shoe);
   return { i, s, thigh, shin, shoe };
 });
@@ -125,15 +127,10 @@ export function updateRig(feet) {
     aim(l.thigh, hip, mid); aim(l.shin, mid, end);
     l.shoe.position.copy(end); orient(l.shoe, f.toe, DOWN);
   }
-  vmSun.position.copy(sun.position); vmSun.color.copy(sun.color); vmSun.intensity = sun.intensity;
-  vmHemi.color.copy(hemi.color); vmHemi.groundColor.copy(hemi.groundColor); vmHemi.intensity = hemi.intensity;
 }
 
-export function renderViewmodel() {
-  renderer.autoClear = false; renderer.clearDepth();
-  renderer.render(vmScene, vmCam);
-  renderer.autoClear = true;
-}
+// draws into whatever render target is current: the post pass hands it the viewmodel target
+export function renderViewmodel() { renderer.render(vmScene, vmCam); }
 
 // world-space point in the right fist, where the grapple line starts
 const grip = new THREE.Vector3();

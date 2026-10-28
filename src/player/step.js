@@ -1,5 +1,5 @@
 import {
-  H_STAND, H_CROUCH, GRAV, JUMP_V, MAX_SPEED, RUN, CROUCH_SPEED, G_ACCEL, STAMINA_REGEN, STAMINA_DELAY, DASH_COST,
+  H_STAND, H_CROUCH, GRAV, JUMP_V, MAX_SPEED, MAX_HSPEED, RUN, CROUCH_SPEED, G_ACCEL, STAMINA_REGEN, STAMINA_DELAY, DASH_COST,
   AIR_JUMP_COST, AIR_JUMP_V, MOMENTUM_TURN, RUN_START, RUN_BUILD, RUN_SOFT, TURN_SCRUB, SLIDE_FRICTION, SLIDE_MIN,
   DASH_SPEED, DASH_T, SLAM_V,
 } from '../config.js';
@@ -115,7 +115,7 @@ export function step(dt) {
     const hs = hspeed();
     const braking = hs > 0.1 && (P.vel.x * wish.x + P.vel.z * wish.z) / hs < -0.3; // holding back on purpose
     if (!P.sliding && !crouchHeld && P.stun <= 0 && wish.lengthSq() > 0 && hs > RUN_START - 0.5 && !braking) {
-      // each extra km/h takes longer but there's no ceiling; steer toward the input, turning hard scrubs speed
+      // each extra km/h takes longer up to the MAX_HSPEED cap; steer toward the input, turning hard scrubs speed
       const align = (P.vel.x * wish.x + P.vel.z * wish.z) / hs;
       const gain = RUN_BUILD / (1 + hs / RUN_SOFT);
       const ns = Math.max(RUN_START, hs + (align > 0.5 ? gain * align : -TURN_SCRUB * (0.5 - align)) * dt);
@@ -142,6 +142,8 @@ export function step(dt) {
 
   const total = P.vel.length();
   if (total > MAX_SPEED) P.vel.multiplyScalar(MAX_SPEED / total);
+  const hcap = hspeed();
+  if (hcap > MAX_HSPEED) { P.vel.x *= MAX_HSPEED / hcap; P.vel.z *= MAX_HSPEED / hcap; }
 
   // integrate with collision: horizontal in sub-steps, then vertical
   const preVel = P.vel.clone(), preVy = P.vel.y;
