@@ -13,11 +13,11 @@ const vmCam = new THREE.PerspectiveCamera(VM_FOV, 1, 0.01, 10);
 vmScene.add(vmCam);
 const body = new THREE.Group(); scene.add(body);
 
-// street-runner outfit: loud yellow jacket, navy cargo pants, magenta trim and kicks. the ink shader lights
+// street-runner outfit: a worn olive jacket, charcoal cargo pants, a burnt-orange trim and grey trainers. the ink shader lights
 // both passes from the theme; the arms skip fog since they're always right in front of you
 const toon = (hex, fog = true) => inkMat({ color: hex, fog });
-const M = { sleeve: toon(0xffc21a, false), skin: toon(0xc98458, false), glove: toon(0x22213a, false), accent: toon(0xff2f8a, false),
-  pants: toon(0x2b3a9a), sole: toon(0xf8f4ea), torso: toon(0xffc21a), kicks: toon(0xff2f8a) };
+const M = { sleeve: toon(0x5a5e46, false), skin: toon(0xb08468, false), glove: toon(0x2a2a2c, false), accent: toon(0xc8602a, false),
+  pants: toon(0x34363a), sole: toon(0xe6e2d8), torso: toon(0x5a5e46), kicks: toon(0x8a8c8e) };
 const ARM_A = 0.3, ARM_B = 0.28, LEG_A = 0.46, LEG_B = 0.45, INK_ARM = 0.009, INK_HAND = 0.005, INK_LEG = 0.016;
 
 // a mesh with a slightly bigger back-face hull: the same ink outline the world uses

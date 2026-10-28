@@ -193,7 +193,7 @@ export function land(vy) {
     }
   } else if (impact > HARD_LAND) {
     P.vel.x *= 0.35; P.vel.z *= 0.35; P.stun = 0.3; shake(0.5); cue('hardland');
-    style.meter *= 0.5; flash('HARD LANDING · tap Ctrl just before impact to roll', '#ff2f8a');
+    style.meter *= 0.5; flash('HARD LANDING · tap Ctrl just before impact to roll', '#e8735a');
     sfx(90, 40, .3, 'square', .1);
   } else if (impact > 6) sfx(140, 60, .08, 'sine', .08);
   camfx.landDip = Math.min(impact * 0.01, 0.3);

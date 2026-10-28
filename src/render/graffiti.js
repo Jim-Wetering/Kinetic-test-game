@@ -1,17 +1,26 @@
 import * as THREE from 'three';
-import '@fontsource/bangers/400.css';
 import '@fontsource/permanent-marker/400.css';
+import '@fontsource/oswald/500.css';
+import '@fontsource/oswald/700.css';
 
-// ---------------------------------------------------------------- graffiti atlas
-// every decal is drawn once into one canvas atlas: bubble-letter pieces, marker tags with drips, red ink seals,
-// brush circles, splatters and arrows. cells are 2:1 so a decal quad is twice as wide as it is tall
+// ---------------------------------------------------------------- street art atlas
+// every decal is drawn once into one canvas atlas, as the things you'd really find on city roofs and walls:
+// marker and spray tags, two-colour throw-ups, stencils, layers of wheatpasted flyers, weathered billboard
+// posters and faded painted ghost signs. everything is sun-bleached and chipped. cells are 2:1, so a decal
+// quad is twice as wide as it is tall
 const COLS = 4, ROWS = 6, CW = 512, CH = 256;
-export const CELLS = COLS * ROWS;
 const canvas = document.createElement('canvas');
 canvas.width = COLS * CW; canvas.height = ROWS * CH;
 const g = canvas.getContext('2d');
 export const atlas = new THREE.CanvasTexture(canvas);
 atlas.anisotropy = 4;
+
+// cell ranges per kind of decal: [first, end)
+export const ART = { tag: [0, 5], throw: [5, 10], stencil: [10, 13], paste: [13, 17], ad: [17, 21], ghost: [21, 24] };
+const KIND_OF = [];
+for (const [k, [a, b]] of Object.entries(ART)) for (let i = a; i < b; i++) KIND_OF[i] = k;
+// a random cell of one kind, from a 0..1 random number
+export const artCell = (kind, u) => { const [a, b] = ART[kind]; return a + Math.min(b - a - 1, (u * (b - a)) | 0); };
 
 // a fixed seed, so walls look the same every run
 let s = 12345;
@@ -19,146 +28,200 @@ const r = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 const rr = (a, b) => a + (b - a) * r();
 const pickR = (a) => a[(r() * a.length) | 0];
 
-const WORDS = ['KINETIC', 'FLOW', 'RUSH', 'JUMP!', 'NO LIMIT', 'GO GO', 'SKY', 'ZOOM', 'LEAP', 'RUN!', 'FAST', 'WALL'];
-const TAGS = ['kin', 'flo', 'Zip', 'rush', 'K!', 'hop', 'vlt', 'Rnr'];
-const PAL = [['#ff2f8a', '#ffd21a'], ['#2ad8ff', '#7a3cff'], ['#7cff4a', '#00b0a0'], ['#ff7a1a', '#ff2f4a'],
-  ['#ffe64a', '#ff5ad0'], ['#4affd8', '#2f6aff'], ['#ff4a4a', '#ffb02f'], ['#c04aff', '#ff4ab0']];
-const INK = '#120c18';
+// spray-can colours, slightly dulled the way paint is after a few summers
+const PAINT = { black: '#1b1a1a', white: '#ece8de', silver: '#c4c7c8', red: '#b8382c', blue: '#2e4e8a', sky: '#6a9cc4',
+  yellow: '#d8b440', green: '#3f7a4a', orange: '#d06a2c', purple: '#5e4a86', pink: '#c46a8a' };
+const NAMES = ['RIVO', 'KEMS', 'DOAK', 'SPEL', 'ZIEK', 'ORBY', 'TENU', 'MOLK', 'VASK', 'ELOR'];
+const CREWS = ['KTC', 'RFC', 'NB5', 'DTR', 'SVK'];
+const MARKER = '"Permanent Marker", "Segoe Print", cursive';
+const SIGN = 'Oswald, "Arial Narrow", sans-serif';
+const BLOCK = '900 150px "Arial Black", "Arial", sans-serif';
 
-// a brush stroke: overlapping blobs along a path whose width swells and thins, with dry gaps
-function brush(pts, w, col) {
-  g.fillStyle = col;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2);
-    for (let k = 0; k < n; k++) {
-      const t = (i + k / n) / (pts.length - 1), rad = w * (0.35 + Math.sin(t * Math.PI) * 0.75) * rr(0.85, 1.1);
-      if (r() < 0.04) continue;
-      g.beginPath(); g.arc(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n, rad, 0, 7); g.fill();
-    }
+// ---------------------------------------------------------------- weathering
+// chip and fade what's been drawn: speckled paint loss, a few flaked patches, and rain streaks washing down
+function wear(amount) {
+  g.save(); g.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 500 * amount; i++) {
+    g.globalAlpha = rr(0.15, 0.9);
+    g.beginPath(); g.ellipse(rr(0, CW), rr(0, CH), rr(0.6, 3), rr(0.6, 2.4), r() * 3, 0, 7); g.fill();
   }
-}
-function splat(x, y, size, col) {
-  g.fillStyle = col;
-  g.beginPath(); g.arc(x, y, size, 0, 7); g.fill();
-  for (let i = 0; i < 14; i++) {
-    const a = r() * 7, d = size * rr(1.1, 2.6), rad = size * rr(0.06, 0.25);
-    g.beginPath(); g.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, rad, 0, 7); g.fill();
+  for (let i = 0; i < 6 * amount; i++) {
+    g.globalAlpha = rr(0.3, 0.8); const x = rr(0, CW), y = rr(0, CH);
+    g.beginPath(); for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28, d = rr(4, 16); g.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
+    g.fill();
   }
+  for (let i = 0; i < 18 * amount; i++) { g.globalAlpha = rr(0.05, 0.25); g.fillRect(rr(0, CW), rr(0, CH * 0.6), rr(2, 7), rr(40, 160)); }
+  g.restore();
 }
+// thin paint runs below a line
 function drips(x0, x1, y, col, n) {
-  for (let i = 0; i < n; i++) {
-    const x = rr(x0, x1), len = rr(14, 60), w = rr(4, 9);
-    g.fillStyle = INK; g.fillRect(x - w / 2 - 3, y - 4, w + 6, len + 3);
-    g.beginPath(); g.arc(x, y + len, w / 2 + 3, 0, 7); g.fill();
-    g.fillStyle = col; g.fillRect(x - w / 2, y - 6, w, len);
-    g.beginPath(); g.arc(x, y + len, w / 2, 0, 7); g.fill();
-  }
+  g.fillStyle = col;
+  for (let i = 0; i < n; i++) { const x = rr(x0, x1), len = rr(8, 40), w = rr(1.5, 3.2); g.fillRect(x - w / 2, y, w, len); g.beginPath(); g.arc(x, y + len, w * 0.8, 0, 7); g.fill(); }
 }
-function star(x, y, R, col) {
-  g.beginPath();
-  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, d = i % 2 ? R * 0.42 : R; g.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
-  g.closePath(); g.fillStyle = col; g.fill(); g.lineWidth = 5; g.strokeStyle = INK; g.stroke();
+// soft overspray around whatever is drawn while it's on
+const spray = (col, blur) => { g.shadowColor = col; g.shadowBlur = blur; };
+const noSpray = () => { g.shadowBlur = 0; g.shadowColor = 'transparent'; };
+
+// ---------------------------------------------------------------- tags
+// a patch of wall that's been tagged a few times over: handstyles in marker and spray, a crew name, drips
+function tags() {
+  const n = 2 + ((r() * 2) | 0);
+  for (let i = 0; i < n; i++) {
+    const col = pickR([PAINT.black, PAINT.black, PAINT.white, PAINT.red, PAINT.blue, PAINT.silver]);
+    const size = rr(56, 110), word = r() < 0.75 ? pickR(NAMES).toLowerCase() : pickR(CREWS);
+    g.save(); g.translate(rr(CW * 0.28, CW * 0.72), rr(CH * 0.35, CH * 0.8)); g.rotate(rr(-0.2, 0.1)); g.transform(1, 0, rr(-0.35, -0.1), 1, 0, 0);
+    g.font = `${size}px ${MARKER}`; g.textAlign = 'center'; spray(col, 3);
+    g.fillStyle = col; g.fillText(word, 0, 0);
+    const w = g.measureText(word).width;
+    g.lineWidth = rr(2, 4); g.strokeStyle = col; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-w / 2, size * 0.18); g.quadraticCurveTo(0, size * 0.32, w / 2 + rr(10, 40), size * 0.05); g.stroke();
+    noSpray(); drips(-w / 2, w / 2, size * 0.05, col, (r() * 4) | 0);
+    g.restore();
+  }
+  wear(0.6);
 }
 
-// fat bubble letters: drop shadow, black outline, white sticker border, gradient fill, shine and drips
-function piece(word, [a, b]) {
-  let size = 150;
-  g.font = `${size}px Bangers, Impact, sans-serif`;
-  while (g.measureText(word).width > CW * 0.82 && size > 60) { size -= 8; g.font = `${size}px Bangers, Impact, sans-serif`; }
-  g.save(); g.translate(CW / 2, CH / 2 + size * 0.33); g.rotate(rr(-0.12, 0.08));
-  g.textAlign = 'center'; g.lineJoin = 'round';
-  splat(rr(-180, 180), -size * 0.4, rr(18, 30), b);
-  g.fillStyle = INK; g.fillText(word, 9, 9);
-  g.lineWidth = 30; g.strokeStyle = INK; g.strokeText(word, 0, 0);
-  g.lineWidth = 16; g.strokeStyle = '#ffffff'; g.strokeText(word, 0, 0);
-  g.lineWidth = 6; g.strokeStyle = INK; g.strokeText(word, 0, 0);
-  const grad = g.createLinearGradient(0, -size * 0.8, 0, 0); grad.addColorStop(0, a); grad.addColorStop(1, b);
-  g.fillStyle = grad; g.fillText(word, 0, 0);
-  g.globalCompositeOperation = 'source-atop';
-  g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(-CW, -size * 0.75, CW * 2, size * 0.14);
-  g.globalCompositeOperation = 'source-over';
-  const w = g.measureText(word).width;
-  drips(-w / 2 + 10, w / 2 - 10, 2, b, 5);
-  if (r() < 0.6) star(w / 2 + 10, -size * 0.75, 26, '#ffffff');
+// ---------------------------------------------------------------- throw-ups
+// fat, quickly-filled bubble letters: an outer line, a flat fill, an outline, the odd paint run
+function throwUp() {
+  const [fill, line, outer] = pickR([[PAINT.silver, PAINT.black, null], [PAINT.white, PAINT.black, PAINT.red],
+    [PAINT.silver, PAINT.blue, PAINT.black], [PAINT.yellow, PAINT.black, null], [PAINT.white, PAINT.purple, null], [PAINT.orange, PAINT.black, PAINT.white]]);
+  const word = pickR(NAMES).slice(0, 3 + ((r() * 2) | 0));
+  g.save(); g.translate(CW / 2, CH / 2 + 48); g.font = BLOCK; g.textAlign = 'left'; g.lineJoin = 'round';
+  const ws = [...word].map((ch) => g.measureText(ch).width * 0.8), total = ws.reduce((a, b) => a + b, 0), k = Math.min(1, CW * 0.74 / total);
+  g.scale(k, k * rr(0.95, 1.15));
+  const letters = []; let x = -total / 2;
+  for (let i = 0; i < word.length; i++) { letters.push({ ch: word[i], x, y: rr(-10, 10), a: rr(-0.12, 0.12) }); x += ws[i]; }
+  const pass = (fn) => { for (const L of letters) { g.save(); g.translate(L.x, L.y); g.rotate(L.a); fn(L.ch); g.restore(); } };
+  if (outer) { spray(outer, 6); g.lineWidth = 58; g.strokeStyle = outer; pass((ch) => g.strokeText(ch, 0, 0)); }
+  spray(line, 4); g.lineWidth = 40; g.strokeStyle = line; pass((ch) => g.strokeText(ch, 0, 0));
+  noSpray(); g.lineWidth = 24; g.strokeStyle = fill; pass((ch) => g.strokeText(ch, 0, 0));
+  g.fillStyle = fill; pass((ch) => g.fillText(ch, 0, 0));
+  // a quick inner highlight stroke on a few letters, like a lighter can passed over the fill
+  g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 5; g.lineCap = 'round';
+  pass(() => { if (r() < 0.5) { g.beginPath(); g.moveTo(14, -88); g.lineTo(30, -96); g.stroke(); } });
+  drips(-total / 2 + 20, total / 2 - 20, 26, line, 2 + ((r() * 3) | 0));
   g.restore();
+  wear(0.8);
 }
-// a quick marker tag with an underline swoosh and drips
-function tag(word, [a]) {
-  g.save(); g.translate(CW / 2, CH / 2 + 30); g.rotate(rr(-0.25, 0.05));
-  g.font = '120px "Permanent Marker", cursive'; g.textAlign = 'center';
-  g.lineWidth = 12; g.lineJoin = 'round'; g.strokeStyle = INK; g.strokeText(word, 0, 0);
-  g.fillStyle = a; g.fillText(word, 0, 0);
-  const w = g.measureText(word).width;
-  brush([[-w / 2, 26], [0, 40], [w / 2 + 30, 14], [w / 2 + 60, -20]], 7, a);
-  drips(-w / 2, w / 2, 8, a, 4);
-  g.restore();
-}
-// red hanko-style seal next to a brush circle (enso): the ink-painting stamp
-function seal() {
-  const red = pickR(['#d8262a', '#c41e2e', '#e0402a']);
-  const cx = CW * 0.38, cy = CH / 2;
-  const pts = [];
-  for (let i = 0, n = 34, a0 = rr(0, 6), sweep = rr(5.3, 5.9); i <= n; i++) {
-    const a = a0 + sweep * i / n, R = 92 + Math.sin(i * 0.7) * 4;
-    pts.push([cx + Math.cos(a) * R, cy + Math.sin(a) * R]);
+
+// ---------------------------------------------------------------- stencils
+function stencil(i) {
+  const col = pickR([PAINT.black, PAINT.black, PAINT.white, PAINT.red]);
+  g.save(); g.fillStyle = col; g.strokeStyle = col; spray(col, 5);
+  if (i === 0) {
+    // a runner mid-leap: limbs as thick strokes, head as a disc
+    g.translate(CW / 2, CH / 2 + 10); g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 22;
+    const P = (pts) => { g.beginPath(); g.moveTo(...pts[0]); for (const p of pts.slice(1)) g.lineTo(...p); g.stroke(); };
+    P([[-10, -40], [16, 20]]);                          // torso
+    P([[-6, -30], [-56, -16], [-86, -52]]);             // back arm
+    P([[-4, -32], [40, -56], [76, -40]]);               // front arm
+    P([[16, 20], [68, 14], [90, 58]]);                  // front leg
+    P([[16, 20], [-26, 52], [-74, 40]]);                // trailing leg
+    g.beginPath(); g.arc(-16, -74, 21, 0, 7); g.fill();
+    g.lineWidth = 6; P([[-150, 96], [150, 96]]);         // ground line
+  } else if (i === 1) {
+    // a crow on a wire
+    g.translate(CW / 2, CH / 2);
+    g.beginPath(); g.moveTo(-90, 10); g.quadraticCurveTo(-40, -50, 20, -46); g.quadraticCurveTo(46, -76, 74, -54);
+    g.lineTo(110, -50); g.lineTo(78, -38); g.quadraticCurveTo(70, 10, 20, 30); g.lineTo(-30, 40); g.lineTo(-120, 40); g.closePath(); g.fill();
+    g.lineWidth = 5; g.beginPath(); g.moveTo(-10, 36); g.lineTo(-14, 70); g.moveTo(14, 30); g.lineTo(12, 70); g.stroke();
+    g.lineWidth = 3; g.beginPath(); g.moveTo(-250, 72); g.quadraticCurveTo(0, 82, 250, 68); g.stroke();
+  } else {
+    // stencilled lettering, with the bridges a stencil leaves in the letters
+    g.translate(CW / 2, CH / 2); g.font = `700 92px ${SIGN}`; g.textAlign = 'center';
+    g.fillText('KEEP MOVING', 0, 6); g.font = `500 34px ${SIGN}`; g.fillText('— ROOF ACCESS ONLY —', 0, 64);
+    noSpray(); g.globalCompositeOperation = 'destination-out'; g.fillRect(-260, -32, 520, 5);
   }
-  brush(pts, 13, INK);
-  splat(cx + rr(-60, 60), cy + rr(-60, 60), 6, INK);
-  g.save(); g.translate(CW * 0.76, CH / 2); g.rotate(rr(-0.15, 0.15));
-  g.fillStyle = red; g.beginPath(); g.roundRect ? g.roundRect(-58, -78, 116, 156, 10) : g.rect(-58, -78, 116, 156); g.fill();
-  // carved white strokes: an abstract glyph, not a real character
-  for (let k = 0; k < 4; k++) {
-    const y = -52 + k * 34;
-    brush([[-38, y + rr(-6, 6)], [rr(-10, 10), y + rr(-8, 8)], [38, y + rr(-6, 6)]], 5, '#fff3ea');
+  g.restore(); noSpray();
+  wear(0.7);
+}
+
+// ---------------------------------------------------------------- wheatpaste
+// overlapping flyers pasted up in layers: printed blocks of colour and type, torn corners, curling edges
+const FLYERS = [['LIVE', 'FRI · 9PM'], ['NIGHT', 'MARKET'], ['ROOM', 'TO LET'], ['OPEN', 'STUDIO'], ['RADIO', '94.6 FM'], ['CLUB', 'NOVA'], ['FLEA', 'SUNDAY']];
+function paste() {
+  const n = 4 + ((r() * 3) | 0);
+  for (let i = 0; i < n; i++) {
+    const w = rr(110, 170), h = w * 1.4, x = rr(20, CW - w - 20), y = rr(-20, CH - h + 30);
+    const paper = pickR(['#ece4d0', '#e8dcc0', '#d8d2c4', '#e8c8a0', '#c8d4cc']), ink = pickR(['#1c1a1a', '#b8382c', '#2e4e8a']);
+    g.save(); g.translate(x + w / 2, y + h / 2); g.rotate(rr(-0.05, 0.05)); g.translate(-w / 2, -h / 2);
+    g.fillStyle = paper; g.fillRect(0, 0, w, h);
+    g.fillStyle = ink; const [t1, t2] = pickR(FLYERS);
+    if (r() < 0.5) g.fillRect(10, 10, w - 20, h * 0.42); else { g.beginPath(); g.arc(w / 2, h * 0.3, w * 0.28, 0, 7); g.fill(); }
+    g.font = `700 ${w * 0.26}px ${SIGN}`; g.textAlign = 'center'; g.fillText(t1, w / 2, h * 0.68);
+    g.font = `500 ${w * 0.13}px ${SIGN}`; g.fillText(t2, w / 2, h * 0.82);
+    for (let k = 0; k < 3; k++) g.fillRect(16, h * 0.88 + k * 6, rr(w * 0.3, w - 32), 2);
+    // a torn corner, and paste wrinkles
+    g.globalCompositeOperation = 'destination-out'; g.beginPath();
+    const cx = r() < 0.5 ? 0 : w, cy = r() < 0.5 ? 0 : h, d = rr(18, 40);
+    g.moveTo(cx, cy); g.lineTo(cx + (cx ? -d : d), cy); g.lineTo(cx, cy + (cy ? -d * 1.3 : d * 1.3)); g.fill();
+    g.globalCompositeOperation = 'source-over'; g.strokeStyle = 'rgba(0,0,0,.12)'; g.lineWidth = 1.5;
+    for (let k = 0; k < 3; k++) { g.beginPath(); g.moveTo(rr(0, w), 0); g.lineTo(rr(0, w), h); g.stroke(); }
+    g.restore();
   }
-  brush([[rr(-12, 12), -60], [rr(-8, 8), 0], [rr(-12, 12), 62]], 5, '#fff3ea');
-  g.restore();
+  wear(0.9);
 }
-function burst([a, b]) {
-  g.save(); g.translate(CW / 2, CH / 2);
-  g.beginPath();
-  for (let i = 0; i < 28; i++) { const ang = i * Math.PI / 14, d = i % 2 ? 70 : rr(110, 125); g.lineTo(Math.cos(ang) * d * 1.8, Math.sin(ang) * d); }
-  g.closePath(); g.fillStyle = a; g.fill(); g.lineWidth = 9; g.strokeStyle = INK; g.stroke();
-  g.font = '110px Bangers, Impact, sans-serif'; g.textAlign = 'center'; g.lineWidth = 14; g.lineJoin = 'round';
-  const word = pickR(['WOW!', 'GO!!', 'POW', 'YES!']);
-  g.strokeStyle = INK; g.strokeText(word, 0, 38); g.fillStyle = b; g.fillText(word, 0, 38);
-  g.restore();
+
+// ---------------------------------------------------------------- billboard posters
+// paper billboards: a flat colour field, one big graphic, a headline and the brand, pasted in vertical strips
+const ADS = [
+  { bg: '#d8c49a', fg: '#2a2420', hi: '#b8382c', head: 'GOOD MORNING', brand: 'ARCA COFFEE', art: 'cup' },
+  { bg: '#2e4e6a', fg: '#ece4d0', hi: '#d8b440', head: 'THE CITY, ON TIME', brand: 'NORTHLINE TRANSIT', art: 'line' },
+  { bg: '#ece4d0', fg: '#1c1a1a', hi: '#c46a3a', head: 'TUNE IN', brand: 'RADIO 94.6 FM', art: 'wave' },
+  { bg: '#6a8a7a', fg: '#f2ecdc', hi: '#f2ecdc', head: 'STAY COOL', brand: 'SOLA SPRING WATER', art: 'sun' },
+];
+function ad(i) {
+  const A = ADS[i % ADS.length];
+  g.fillStyle = A.bg; g.fillRect(6, 6, CW - 12, CH - 12);
+  g.fillStyle = A.hi; g.strokeStyle = A.hi;
+  if (A.art === 'cup') { g.fillRect(CW * 0.66, 70, 90, 110); g.lineWidth = 14; g.beginPath(); g.arc(CW * 0.66 + 98, 120, 26, -1.4, 1.4); g.stroke(); }
+  else if (A.art === 'line') { g.lineWidth = 16; g.beginPath(); g.moveTo(CW * 0.55, 190); g.lineTo(CW * 0.72, 90); g.lineTo(CW * 0.95, 90); g.stroke(); for (const x of [0.55, 0.72, 0.95]) { g.beginPath(); g.arc(CW * x, x === 0.55 ? 190 : 90, 16, 0, 7); g.fill(); } }
+  else if (A.art === 'wave') { g.lineWidth = 10; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(CW * 0.78, 128, 26 + k * 24, -0.8, 0.8); g.stroke(); } }
+  else { g.beginPath(); g.arc(CW * 0.78, 110, 56, 0, 7); g.fill(); g.fillRect(CW * 0.6, 182, CW * 0.36, 8); }
+  g.fillStyle = A.fg; g.textAlign = 'left';
+  g.font = `700 50px ${SIGN}`; g.fillText(A.head, 34, 112);
+  g.font = `500 26px ${SIGN}`; g.fillText(A.brand, 36, 196);
+  // paste seams and a little peeling along them
+  g.fillStyle = 'rgba(0,0,0,.14)'; for (let k = 1; k < 4; k++) g.fillRect((CW / 4) * k, 6, 2, CH - 12);
+  wear(1.0);
 }
-function arrow([a, b]) {
-  g.save(); g.translate(CW / 2, CH / 2); g.rotate(rr(-0.2, 0.2));
-  const path = () => { g.beginPath(); g.moveTo(-200, -34); g.lineTo(80, -34); g.lineTo(80, -84); g.lineTo(210, 0); g.lineTo(80, 84); g.lineTo(80, 34); g.lineTo(-200, 34); g.closePath(); };
-  g.translate(10, 10); path(); g.fillStyle = INK; g.fill(); g.translate(-10, -10);
-  path(); const grad = g.createLinearGradient(-200, 0, 210, 0); grad.addColorStop(0, a); grad.addColorStop(1, b);
-  g.fillStyle = grad; g.fill(); g.lineWidth = 10; g.lineJoin = 'round'; g.strokeStyle = INK; g.stroke();
-  for (let i = 0; i < 3; i++) g.fillRect(-250 - i * 34, -34 + i * 6, 18, 68 - i * 12);
+
+// ---------------------------------------------------------------- ghost signs
+// old hand-painted advertising on a blank brick wall, faded almost into it
+const GHOSTS = [['HOTEL CARLTON', 'ROOMS BY THE WEEK'], ['DRY GOODS', '& HARDWARE'], ['COAL · ICE', 'DELIVERED DAILY']];
+function ghost(i) {
+  const [a, b] = GHOSTS[i % GHOSTS.length];
+  g.save(); g.globalAlpha = 0.62; g.fillStyle = '#ece4d0'; g.strokeStyle = '#ece4d0';
+  g.lineWidth = 7; g.strokeRect(18, 18, CW - 36, CH - 36);
+  g.textAlign = 'center'; g.font = `700 70px Georgia, "Times New Roman", serif`;
+  g.fillText(a, CW / 2, 120, CW - 70);
+  g.font = `italic 38px Georgia, "Times New Roman", serif`; g.fillText(b, CW / 2, 186, CW - 90);
+  g.fillRect(CW * 0.3, 140, CW * 0.4, 4);
   g.restore();
-}
-function inkSplash() {
-  splat(CW / 2 + rr(-40, 40), CH / 2, rr(46, 62), INK);
-  brush([[60, CH * 0.75], [CW * 0.4, CH * 0.6], [CW * 0.8, CH * 0.72], [CW - 40, CH * 0.5]], 16, INK);
-  const red = '#d8262a';
-  splat(CW * 0.78, CH * 0.3, 16, red);
+  wear(1.4);
 }
 
 function draw() {
   s = 12345;
   g.clearRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < CELLS; i++) {
+  for (let i = 0; i < COLS * ROWS; i++) {
     g.save(); g.translate((i % COLS) * CW, ((i / COLS) | 0) * CH);
     g.beginPath(); g.rect(0, 0, CW, CH); g.clip();
-    const pal = PAL[i % PAL.length], kind = i % 8;
-    if (kind === 0 || kind === 3 || kind === 6) piece(WORDS[i % WORDS.length], pal);
-    else if (kind === 1 || kind === 5) tag(TAGS[i % TAGS.length], pal);
-    else if (kind === 2) seal();
-    else if (kind === 4) burst(pal);
-    else if (r() < 0.5) arrow(pal); else inkSplash();
+    const kind = KIND_OF[i], k = i - ART[kind][0];
+    if (kind === 'tag') tags();
+    else if (kind === 'throw') throwUp();
+    else if (kind === 'stencil') stencil(k);
+    else if (kind === 'paste') paste();
+    else if (kind === 'ad') ad(k);
+    else ghost(k);
     g.restore();
   }
   atlas.needsUpdate = true;
 }
 draw();
 // the web fonts load after the first draw: redraw once they're ready
-if (document.fonts) Promise.all([document.fonts.load('100px Bangers'), document.fonts.load('100px "Permanent Marker"')]).then(draw, () => {});
+if (document.fonts) Promise.all([document.fonts.load(`100px ${MARKER}`), document.fonts.load(`700 100px ${SIGN}`), document.fonts.load(`500 100px ${SIGN}`)]).then(draw, () => {});
 
 export const matDecal = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, transparent: true, alphaTest: 0.02, side: THREE.DoubleSide,
   depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });

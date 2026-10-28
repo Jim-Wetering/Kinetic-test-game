@@ -6,40 +6,42 @@ import { INK, setColor } from './ink.js';
 import { postU } from './post.js';
 
 // ---------------------------------------------------------------- themes
-// street-graffiti colour, cel-shaded seaside brightness and sumi-e ink on paper, mixed differently per level.
-// shade: what lit colours are multiplied by in shadow (a colour, never grey). paper/halftone/hatch/vig: 0..1
-// amounts of each ink effect. mount: the ink-wash mountain colour. disc: the sun's flat disc colour
+// real city materials (brick, render, concrete, sandstone, tar roofs, galvanised steel) painted in ink and wash.
+// shade: what lit colours are multiplied by in shadow (a colour, never grey). paper/hatch/vig: 0..1 amounts of
+// each ink effect. mount: the ink-wash hills on the horizon. disc: the sun's flat disc colour. glass / lit /
+// litCol: window panes, the share of windows lit and their colour. steel / primer / safety: bare steel, red-oxide
+// primed girders and safety-yellow paint
 const THEMES = {
-  // bright seaside cel-shading: candy towers, deep blue sky, violet shadows
-  day: { top: '#1c63d8', hor: '#c4f1ff', low: '#2f86c4', fog: '#cfefff', sun: [-0.4, 0.8, -0.45], sunCol: '#fffbec', disc: '#fff6c8', sunR: 0.07,
-    shade: '#8f8fe0', bld: ['#fff0c4', '#ffd3e1', '#c4f3e2', '#ffe48c', '#d6e4ff'], roof: '#f6f1e6', glass: '#2fb2ff',
-    prop: '#ff9a3c', accent: '#ff3d6e', ink: '#1b1430', ground: '#2f86c4', cloud: '#ffffff', streak: '#ffffff', mount: '#6fa8e0',
-    paper: 0.22, halftone: 0.55, hatch: 0.2, vig: 0.35, lines: '27,20,48' },
-  // parchment and vermilion: cream walls, red roofs, sepia ink, heavy paper
-  gold: { top: '#d9c08e', hor: '#fbf0d6', low: '#b89668', fog: '#f1e2bf', sun: [0.6, 0.3, -0.7], sunCol: '#fff4dc', disc: '#e8452c', sunR: 0.065,
-    shade: '#c49a74', bld: ['#fbf3df', '#f3e5c6', '#efdfbf', '#f7ecd4'], roof: '#c94a30', glass: '#2c241d',
-    prop: '#3a2e26', accent: '#d42a26', ink: '#1a110b', ground: '#a88a60', cloud: '#fff8ea', streak: '#fffaf0', mount: '#5c4a38',
-    paper: 0.85, halftone: 0, hatch: 0.75, vig: 0.6, lines: '40,26,14' },
-  // sticker-bright construction site: acid yellow, mint, hot pink windows, teal shadows
-  teal: { top: '#12b8a8', hor: '#f4ffb4', low: '#23756d', fog: '#daf6c8', sun: [-0.2, 0.9, 0.3], sunCol: '#ffffff', disc: '#ffffff', sunR: 0.06,
-    shade: '#5fb0c8', bld: ['#f5ff7c', '#7cffd6', '#ffffff', '#ffb6e8'], roof: '#ece6ff', glass: '#ff2f9e',
-    prop: '#ffcf1a', accent: '#ff2f8a', ink: '#0f1a22', ground: '#23756d', cloud: '#ffffff', streak: '#ffffff', mount: '#24907f',
-    paper: 0.15, halftone: 0.9, hatch: 0.15, vig: 0.3, lines: '15,26,34' },
-  // street-at-dusk: purple sky into orange, pink and lilac walls, yellow roofs
-  dusk: { top: '#5a2bd8', hor: '#ffb06a', low: '#6e2c80', fog: '#ffa894', sun: [0.3, 0.15, -0.9], sunCol: '#ffe2b0', disc: '#fff0c0', sunR: 0.08,
-    shade: '#9a62d8', bld: ['#ffe7f3', '#ffd2a8', '#cbbaff', '#ffffff'], roof: '#ffd84a', glass: '#ff4fa8',
-    prop: '#2ad8ff', accent: '#ff2f6a', ink: '#1d0f2e', ground: '#5a2a70', cloud: '#ffd6e8', streak: '#ffe0c8', mount: '#7e3aa0',
-    paper: 0.2, halftone: 0.8, hatch: 0.3, vig: 0.4, lines: '29,15,46' },
-  // neon night: indigo towers with lit window bands, magenta and cyan accents, a pale moon
-  night: { top: '#06061a', hor: '#40208a', low: '#0b0b20', fog: '#271255', sun: [0.35, 0.6, 0.45], sunCol: '#b4dcff', disc: '#f4f2ff', sunR: 0.05,
-    shade: '#5a3ab0', bld: ['#5f63cc', '#7055c6', '#4f73d4'], roof: '#9196ee', glass: '#ffe24a',
-    prop: '#2affd5', accent: '#ff2fb0', ink: '#07051a', ground: '#140c33', cloud: '#3e3384', streak: '#6a4fc0', mount: '#1a1046',
-    paper: 0.1, halftone: 0.7, hatch: 0.25, vig: 0.5, lines: '255,120,230' },
-  // a huge red sun over ink-black towers' shadows: the sumi-e level
-  sunset: { top: '#2a1838', hor: '#ff7c3c', low: '#3a1420', fog: '#ea7550', sun: [-0.25, 0.1, -1], sunCol: '#ffd4a4', disc: '#e8232a', sunR: 0.1,
-    shade: '#8a3a66', bld: ['#fff0dc', '#f6dfc6', '#ffe6d0'], roof: '#e2c2ae', glass: '#1c1018',
-    prop: '#3a2430', accent: '#e8232a', ink: '#14080c', ground: '#3a1420', cloud: '#ffb48a', streak: '#ffd0a8', mount: '#3a1424',
-    paper: 0.7, halftone: 0.2, hatch: 0.6, vig: 0.55, lines: '20,8,12' },
+  // clear midday: warm brick and pale render under a deep blue sky, cool blue shadows
+  day: { top: '#3b78c4', hor: '#dde8ee', low: '#7d8a92', fog: '#cfdde6', sun: [-0.4, 0.8, -0.45], sunCol: '#fff8ea', disc: '#fffbea', sunR: 0.05,
+    shade: '#8492b8', bld: ['#b5654a', '#c98a68', '#d9cfbd', '#e6dfd0', '#a9aaa4', '#cdb48c'], roof: '#8a8783', glass: '#4f6a80',
+    lit: 0, litCol: '#ffe2a8', prop: '#9aa0a4', steel: '#4a4f55', primer: '#8e3b2a', safety: '#e2b12a', accent: '#d8402a',
+    ink: '#1c1a18', ground: '#5c5f60', cloud: '#ffffff', streak: '#ffffff', mount: '#8fa6bc', paper: 0.3, hatch: 0.3, vig: 0.35, lines: '28,26,24' },
+  // late afternoon in sepia ink: sandstone towers and smoked glass, heavy paper
+  gold: { top: '#cdb48a', hor: '#f6ead2', low: '#a88e6c', fog: '#ecdcbc', sun: [0.6, 0.3, -0.7], sunCol: '#fff2d8', disc: '#d8452c', sunR: 0.055,
+    shade: '#a58266', bld: ['#e6d5b4', '#d6bf98', '#c79a74', '#ece2cc', '#b88a66'], roof: '#76644f', glass: '#3e4a50',
+    lit: 0.02, litCol: '#ffd9a0', prop: '#6e655a', steel: '#3a332c', primer: '#8a3a26', safety: '#c99a2a', accent: '#c4302a',
+    ink: '#1a110b', ground: '#8a7458', cloud: '#fff6e6', streak: '#fffaf0', mount: '#6a5844', paper: 0.85, hatch: 0.7, vig: 0.6, lines: '40,26,14' },
+  // overcast construction site: raw concrete, safety yellow, flat grey-green light
+  teal: { top: '#7f9a9c', hor: '#dfe5df', low: '#68756f', fog: '#d2dad4', sun: [-0.2, 0.9, 0.3], sunCol: '#f4f6f0', disc: '#f8f8f2', sunR: 0.045,
+    shade: '#8a9aa6', bld: ['#b9bcb5', '#a6aca6', '#cfcabb', '#9b9e98', '#c2b6a2'], roof: '#6f726e', glass: '#4b5f66',
+    lit: 0.03, litCol: '#ffe8b8', prop: '#8f9496', steel: '#3d4246', primer: '#9a4a2c', safety: '#e0a526', accent: '#e8662a',
+    ink: '#151a1c', ground: '#5b625e', cloud: '#f2f4f2', streak: '#ffffff', mount: '#8a9c98', paper: 0.4, hatch: 0.35, vig: 0.35, lines: '21,26,28' },
+  // dusk: rose brick and lilac shadows, the first windows coming on
+  dusk: { top: '#3c3768', hor: '#eea47e', low: '#5a4360', fog: '#d89a8a', sun: [0.3, 0.15, -0.9], sunCol: '#ffd8b4', disc: '#ffe6c4', sunR: 0.065,
+    shade: '#6e5e90', bld: ['#c48e76', '#b8a4a2', '#d8c0a6', '#9e8a92', '#a8705e'], roof: '#5a4e56', glass: '#3a3a56',
+    lit: 0.14, litCol: '#ffcf8a', prop: '#857a80', steel: '#352f3a', primer: '#8a3a30', safety: '#d8a030', accent: '#e8583a',
+    ink: '#1d1424', ground: '#4a3a4e', cloud: '#f2c8c0', streak: '#ffe0c8', mount: '#6a4a72', paper: 0.3, hatch: 0.4, vig: 0.45, lines: '29,20,36' },
+  // night: blue-grey towers, warm lit windows, sodium-orange accents and a pale moon
+  night: { top: '#080b18', hor: '#26304e', low: '#0b0e18', fog: '#1c2338', sun: [0.35, 0.6, 0.45], sunCol: '#aabbdd', disc: '#eef0f6', sunR: 0.035,
+    shade: '#3a4466', bld: ['#5a6070', '#4e5566', '#666a74', '#585454'], roof: '#2e3240', glass: '#1a2234',
+    lit: 0.4, litCol: '#ffcf86', prop: '#5a6068', steel: '#22262e', primer: '#5e2a24', safety: '#b8902a', accent: '#ff8a3a',
+    ink: '#06070c', ground: '#121626', cloud: '#2e3654', streak: '#46507a', mount: '#151b30', paper: 0.12, hatch: 0.3, vig: 0.5, lines: '200,210,235' },
+  // a huge red sun over ink-dark towers: the sumi-e level
+  sunset: { top: '#2e2236', hor: '#ee8a56', low: '#3a1c24', fog: '#d8805e', sun: [-0.25, 0.1, -1], sunCol: '#ffd6a8', disc: '#d8232a', sunR: 0.09,
+    shade: '#7a4a5a', bld: ['#e6d6c0', '#d6bea4', '#c4a488', '#b08470'], roof: '#4a3a3a', glass: '#2a2026',
+    lit: 0.06, litCol: '#ffc880', prop: '#5a4a4c', steel: '#2a2024', primer: '#7a2a22', safety: '#c8902a', accent: '#d8232a',
+    ink: '#14080c', ground: '#3a1c24', cloud: '#f2a888', streak: '#ffd0a8', mount: '#3a1c2a', paper: 0.7, hatch: 0.6, vig: 0.55, lines: '20,8,12' },
 };
 export const C = (hex) => new THREE.Color(hex);
 export const pick = (arr) => arr[(rng() * arr.length) | 0];
@@ -48,14 +50,15 @@ export let theme = null;
 export function applyTheme(name) {
   const T = THEMES[name];
   theme = Object.assign({}, T, { c: { bld: T.bld.map(C), roof: C(T.roof), glass: C(T.glass), prop: C(T.prop), accent: C(T.accent),
-    cloud: C(T.cloud), ink: C(T.ink), shade: C(T.shade), sunCol: C(T.sunCol) } });
+    cloud: C(T.cloud), ink: C(T.ink), shade: C(T.shade), sunCol: C(T.sunCol), steel: C(T.steel), primer: C(T.primer), safety: C(T.safety) } });
   skyU.top.value.set(T.top); skyU.hor.value.set(T.hor); skyU.low.value.set(T.low); skyU.sunCol.value.set(T.disc);
   skyU.mount.value.set(T.mount); skyU.ink.value.set(T.ink); skyU.streak.value.set(T.streak); skyU.sunR.value = T.sunR;
   skyU.sunDir.value.set(...T.sun).normalize();
   scene.fog.color.set(T.fog);
   INK.uSunDir.value.set(...T.sun).normalize(); INK.uSunCol.value.set(T.sunCol); INK.uShade.value.set(T.shade);
   INK.uFogCol.value.set(T.fog); INK.uFogNear.value = scene.fog.near; INK.uFogFar.value = scene.fog.far;
-  INK.uHalftone.value = T.halftone; INK.uHatch.value = T.hatch; INK.uInkCol.value.set(T.ink);
+  INK.uHatch.value = T.hatch; INK.uInkCol.value.set(T.ink);
+  INK.uGlass.value.set(T.glass); INK.uSkyRef.value.set(T.hor); INK.uLitCol.value.set(T.litCol); INK.uLit.value = T.lit;
   postU.uInk.value.set(T.ink); postU.uPaper.value = T.paper; postU.uVig.value = T.vig;
   sun.position.set(...T.sun).multiplyScalar(100); sun.color.set(T.sunCol);
   hemi.color.set(T.hor); hemi.groundColor.set(T.shade);
