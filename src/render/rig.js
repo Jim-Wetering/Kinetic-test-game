@@ -18,7 +18,7 @@ const body = new THREE.Group(); scene.add(body);
 const toon = (hex, fog = true) => inkMat({ color: hex, fog });
 const M = { sleeve: toon(0x5a5e46, false), skin: toon(0xb08468, false), glove: toon(0x2a2a2c, false), accent: toon(0xc8602a, false),
   pants: toon(0x34363a), sole: toon(0xe6e2d8), torso: toon(0x5a5e46), kicks: toon(0x8a8c8e) };
-const ARM_A = 0.3, ARM_B = 0.28, LEG_A = 0.46, LEG_B = 0.45, INK_ARM = 0.009, INK_HAND = 0.005, INK_LEG = 0.016;
+const ARM_A = 0.3, ARM_B = 0.28, LEG_A = 0.46, LEG_B = 0.45, INK_ARM = 0.014, INK_HAND = 0.008, INK_LEG = 0.024;
 
 // a mesh with a slightly bigger back-face hull: the same ink outline the world uses
 function inked(geo, hull, mat) { const m = new THREE.Mesh(geo, mat); m.add(new THREE.Mesh(hull, matHull)); return m; }

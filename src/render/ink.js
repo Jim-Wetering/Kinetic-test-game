@@ -10,7 +10,6 @@ export const INK = {
   uShade: { value: new THREE.Color(0.6, 0.6, 0.8) },
   uFogCol: { value: new THREE.Color() }, uFogNear: { value: 160 }, uFogFar: { value: 950 },
   uHatch: { value: 0.4 }, uInkCol: { value: new THREE.Color(0, 0, 0) },
-  uPx: { value: 1 },
   // facade windows: glass colour, the sky it reflects, warm lit-window colour and the share of windows lit
   uGlass: { value: new THREE.Color() }, uSkyRef: { value: new THREE.Color() }, uLitCol: { value: new THREE.Color(1, 0.85, 0.55) },
   uLit: { value: 0 },
@@ -52,7 +51,7 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform vec3 uSunDir, uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol;
-  uniform float uFogNear, uFogFar, uHatch, uPx, uFog, uFlat, uLit;
+  uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit;
   varying vec3 vN, vW, vC; varying float vDepth;
   #ifdef FACADE
     varying vec4 vLo; varying vec2 vFac;
@@ -97,8 +96,10 @@ const fragmentShader = `
         // far away the grid only shimmers: fade it to its average tone
         float near = 1.0 - smoothstep(220.0, 520.0, vDepth);
         col = mix(col, glass, pane * near);
-        col = mix(col, uInkCol, frame * near * 0.55);
-        col = mix(col, base * 1.12 * light, sill * near);
+        // the thin frames and sills go first, before they're thinner than a pixel
+        float fine = 1.0 - smoothstep(50.0, 130.0, vDepth);
+        col = mix(col, uInkCol, frame * fine * 0.55);
+        col = mix(col, base * 1.12 * light, sill * fine);
         col = mix(col, mix(col, uGlass, 0.3), (1.0 - near) * inside);
       }
       // roofs: rolled membrane in 1.2 m strips with dark seams, patched and rain-stained
@@ -113,12 +114,15 @@ const fragmentShader = `
     #endif
     // tops catch a touch more sky, so roofs pop against walls
     col *= 1.0 + max(n.y, 0.0) * 0.05;
-    vec2 sp = gl_FragCoord.xy / uPx;
-    // ink hatching on faces turned well away from the sun: broken diagonal pen strokes
+    // ink hatching on faces turned well away from the sun: broken diagonal pen strokes drawn on the surface in
+    // world space, so they stay put as you move. they fade out before they get fine enough to shimmer
     float away = smoothstep(-0.15, -0.55, ndl) * uHatch * (1.0 - uFlat);
-    float stroke = smoothstep(0.6, 0.8, abs(fract((sp.x + sp.y) / 6.0) * 2.0 - 1.0));
-    stroke *= step(0.4, noise(vec2((sp.x - sp.y) / 30.0, (sp.x + sp.y) / 4.0)));
-    col = mix(col, uInkCol, away * stroke * 0.4 * (1.0 - smoothstep(80.0, 300.0, vDepth)));
+    vec2 hp = vert > 0.5 ? vec2(abs(n.x) > 0.5 ? vW.z : vW.x, vW.y) : vW.xz;
+    float hs = (hp.x + hp.y) / 0.3, hw = fwidth(hs);
+    float stroke = smoothstep(0.36 - hw, 0.36 + hw, abs(fract(hs) - 0.5));
+    stroke *= step(0.4, noise(vec2(hp.x - hp.y, hp.x + hp.y) * 0.7));
+    stroke *= (1.0 - smoothstep(25.0, 80.0, vDepth)) * (1.0 - smoothstep(0.12, 0.3, hw));
+    col = mix(col, uInkCol, away * stroke * 0.45);
     // paper mottle in world space, so it sticks to surfaces
     col *= 0.95 + 0.08 * noise(vW.xz * 0.11 + vW.y * 0.07);
     float f = smoothstep(uFogNear, uFogFar, vDepth) * uFog;

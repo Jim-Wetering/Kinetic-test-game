@@ -33,20 +33,30 @@ function resize() {
 }
 export function initResize() { addEventListener('resize', resize); resize(); }
 
-// speed lines as dry pen strokes: thin ink slivers, fat at the screen edge and tapering toward the centre
+// speed lines as dry pen strokes: thin ink slivers, fat at the outer end and tapering toward the centre. each one
+// lives for a moment and glides outward, swelling in and thinning out, instead of the whole set re-rolling every
+// frame (which strobes)
+const streaks = Array.from({ length: 60 }, () => ({ p: Math.random() }));
+function respawn(st) { st.a = Math.random() * Math.PI * 2; st.len = 0.4 + Math.random(); st.w = 0.8 + Math.random() * 2.2; st.v = 0.7 + Math.random() * 0.6; }
+streaks.forEach(respawn);
+let lastT = performance.now();
 export function drawSpeedLines(hs) {
+  const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
   lctx.clearRect(0, 0, lines.width, lines.height);
   if (!settings.fx || hs < 15 || game.state !== 'play') return;
   const w = lines.width, h = lines.height, cxs = w / 2, cys = h / 2, diag = Math.hypot(w, h) / 2;
-  const k = Math.min((hs - 15) / 30, 1), count = 14 + k * 46;
-  lctx.fillStyle = `rgba(${theme.lines},${0.12 + k * 0.3})`;
+  const k = Math.min((hs - 15) / 30, 1), count = Math.round(14 + k * 46);
+  lctx.fillStyle = `rgba(${theme.lines},${0.14 + k * 0.3})`;
   lctx.beginPath();
   for (let i = 0; i < count; i++) {
-    const a = Math.random() * Math.PI * 2, r0 = diag * (0.55 + Math.random() * 0.35), r1 = r0 + diag * (0.1 + k * 0.35) * (0.4 + Math.random());
-    const half = (0.8 + Math.random() * 2.2 * (0.5 + k)) / r1, c = Math.cos(a), s = Math.sin(a);
-    lctx.moveTo(cxs + c * r0, cys + s * r0);
-    lctx.lineTo(cxs + Math.cos(a + half) * r1, cys + Math.sin(a + half) * r1);
-    lctx.lineTo(cxs + Math.cos(a - half) * r1, cys + Math.sin(a - half) * r1);
+    const st = streaks[i];
+    st.p += dt * (1.2 + k * 2.4) * st.v;
+    if (st.p > 1) { st.p -= 1; respawn(st); }
+    const r0 = diag * (0.5 + st.p * 0.45), r1 = r0 + diag * (0.1 + k * 0.35) * st.len;
+    const half = st.w * (0.5 + k) * Math.sin(st.p * Math.PI) / r1;
+    lctx.moveTo(cxs + Math.cos(st.a) * r0, cys + Math.sin(st.a) * r0);
+    lctx.lineTo(cxs + Math.cos(st.a + half) * r1, cys + Math.sin(st.a + half) * r1);
+    lctx.lineTo(cxs + Math.cos(st.a - half) * r1, cys + Math.sin(st.a - half) * r1);
     lctx.closePath();
   }
   lctx.fill();
