@@ -3,10 +3,10 @@ import { NOISE } from './ink.js';
 
 // ---------------------------------------------------------------- renderer
 export const renderer = new THREE.WebGLRenderer({ antialias: false });
-// supersampled: always draw at 1.5x the screen's own pixel density (capped at 2x) and let the browser scale it
-// down. that is the anti-aliasing: the ink pass reads the depth texture, which rules out multisampling, and without
-// it hard edges and fine brushwork shimmer as you move. a 100%-scaled desktop window would otherwise draw at 1x
-renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio, 1) * 1.5, 2));
+// drawn at the screen's own pixel density (capped at 2x): the ink pass reads the depth texture, which rules out
+// multisampling, so edges and fine brushwork are smoothed by the temporal pass in post.js instead. drawing at 1.5-2x
+// and scaling down did the same job at twice the cost or more, and still shimmered as the view turned
+renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio, 1), 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 export const scene = new THREE.Scene();
@@ -26,9 +26,12 @@ scene.add(hemi, sun);
 export const skyU = { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, low: { value: new THREE.Color() },
   sunCol: { value: new THREE.Color() }, sunDir: { value: new THREE.Vector3(0, 1, 0) }, mount: { value: new THREE.Color() },
   ink: { value: new THREE.Color() }, streak: { value: new THREE.Color() }, sunR: { value: 0.06 } };
+// it's drawn last, pinned to the far plane, so it's only painted where nothing else covers the screen: its brushwork
+// is costly per pixel, and drawn first it was painted under every building too
 export const sky = new THREE.Mesh(new THREE.SphereGeometry(2000, 48, 24), new THREE.ShaderMaterial({
   uniforms: skyU, side: THREE.BackSide, depthWrite: false,
-  vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  vertexShader: `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+    gl_Position.z = gl_Position.w; }`,
   fragmentShader: `uniform vec3 top, hor, low, sunCol, sunDir, mount, ink, streak; uniform float sunR; varying vec3 vDir;
     ${NOISE}
     float fbm(vec2 p) { return noise(p) * 0.55 + noise(p * 2.1) * 0.28 + noise(p * 4.3) * 0.17; }
@@ -61,4 +64,5 @@ export const sky = new THREE.Mesh(new THREE.SphereGeometry(2000, 48, 24), new TH
       gl_FragColor = vec4(c, 1.0);
     }`
 }));
+sky.renderOrder = 10; sky.frustumCulled = false;
 scene.add(sky);

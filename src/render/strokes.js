@@ -78,7 +78,8 @@ const fragmentShader = `
     float spire = 0.0;
     if (shape == ${TOWER.SPIRE}) {
       float sh = mix(0.25, max(W * 0.07, 0.9), clamp((y + ex) / (ex + ${TOP.toFixed(1)}), 0.0, 1.0));
-      spire = step(ax, max(sh, fwidth(x) * 1.5)) * step(1.0 - ex, y) * step(y, ${TOP.toFixed(1)} + 1.0) * (1.0 - body);
+      // never under three pixels wide, so it can't break up into dashes as it moves across the pixel grid
+      spire = step(ax, max(sh, fwidth(x) * 3.0)) *step(1.0 - ex, y) * step(y, ${TOP.toFixed(1)} + 1.0) * (1.0 - body);
       body = max(body, spire);
     }
     if (body < 0.5) discard;
@@ -87,11 +88,15 @@ const fragmentShader = `
     col *= 0.95 + 0.08 * noise(vec2((x - c) / W * 4.0, y * 0.015 + s));
     // windows: a few big dabs (~11 x 9 m), each five dry hairs side by side, lamplit by night
     vec2 dc = vec2((x - c + hw) / 11.0, (y - ${TOP.toFixed(1)} - 2.0) / 9.0), di = floor(dc), df = fract(dc);
-    float on = step(0.6, hash(di + s * 3.7)) * step(2.0, top) * step(1.5, side);
+    float mpx = fwidth(x);
+    float on = step(0.6, hash(di + s * 3.7)) * smoothstep(2.0 - mpx, 2.0 + mpx, top) * smoothstep(1.5 - mpx, 1.5 + mpx, side);
     float hy = (df.y - 0.2) / 0.55 * 5.0, hRow = floor(hy), hf = fract(hy);
     float hx = (df.x - 0.08 - hash(di + hRow * 2.9) * 0.08) / (0.4 + 0.5 * hash(di + hRow * 1.7 + 4.2));
-    float hairs = step(0.0, hy) * step(hy, 5.0) * band(hf, 0.1, 0.9, max(0.06, fwidth(hy))) * band(hx, 0.0, 1.0, max(0.04, fwidth(hx)));
-    hairs *= step(smoothstep(0.5, 1.0, hx) * 0.85, noise(vec2(hx * 6.0, hRow * 3.1 + di.x)));
+    // soft edges throughout; hairs too close to tell apart merge into one dab, dry breaks and all (see the facade)
+    float hyw = max(0.06, fwidth(hy)), sep = 1.0 - smoothstep(0.04, 0.1, fwidth(hy));
+    float hairs = band(hy, 0.0, 5.0, hyw) * mix(1.0, band(hf, 0.1, 0.9, hyw), sep) * band(hx, 0.0, 1.0, max(0.04, fwidth(hx)));
+    float dry = smoothstep(0.5, 1.0, hx) * 0.85;
+    hairs *= mix(1.0, smoothstep(dry - 0.08, dry + 0.08, noise(vec2(hx * 6.0, hRow * 3.1 + di.x))), sep * keep(6.0, hx));
     float lamp = step(1.0 - min(1.0, uLit * 1.6), hash(di + 2.3));
     vec3 dab = mix(mix(uGlass, uSkyRef, 0.35), uLitCol, lamp);
     col = mix(col, dab, on * hairs);

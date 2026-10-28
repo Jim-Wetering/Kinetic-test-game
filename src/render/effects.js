@@ -42,11 +42,15 @@ function respawn(st) {
   st.hairs = Array.from({ length: 4 }, (_, i) => ({ o: -0.85 + i * 0.57 + (Math.random() - 0.5) * 0.3, l: 0.25 + Math.random() * 0.5, w: 0.25 + Math.random() * 0.3 }));
 }
 streaks.forEach(respawn);
-let lastT = performance.now();
+let lastT = performance.now(), drawn = false;
 export function drawSpeedLines(hs) {
   const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
-  lctx.clearRect(0, 0, lines.width, lines.height);
+  // an untouched canvas costs nothing to show; clearing an already clear one every frame would still make the
+  // browser blend it over the game again
+  if (drawn) lctx.clearRect(0, 0, lines.width, lines.height);
+  drawn = false;
   if (!settings.fx || hs < 15 || game.state !== 'play') return;
+  drawn = true;
   const w = lines.width, h = lines.height, cxs = w / 2, cys = h / 2, diag = Math.hypot(w, h) / 2;
   const k = Math.min((hs - 15) / 30, 1), count = Math.round(14 + k * 46);
   // a point at radius r from the centre, d pixels to the side of the streak's line

@@ -68,6 +68,10 @@ const fragmentShader = `
   // several pixels, fading to none before it gets down to a few, so no detail is ever finer than the screen can
   // hold (that is what shimmers when you move)
   float keep(float f, float coord) { return 1.0 - smoothstep(0.12, 0.3, f * fwidth(coord)); }
+  // the same for a single line w metres wide, with px metres to a pixel: drawn while it's a few pixels across, gone
+  // before it's down to one. a fixed fade distance isn't enough: a 6 cm glazing bar is a pixel wide well before it
+  // would have faded, and it flickers on and off as the view turns
+  float lineKeep(float w, float px) { return smoothstep(1.0, 3.0, w / px); }
   void main() {
     vec3 n = normalize(gl_FrontFacing ? vN : -vN);
     float ndl = dot(n, uSunDir);
@@ -103,7 +107,7 @@ const fragmentShader = `
         float bw = len / bays, cell = floor(along / bw), lu = fract(along / bw) * bw;
         float below = vFac.x - ${PARAPET.toFixed(2)} - vW.y, fl = floor(below / ${FLOOR.toFixed(2)});
         float lv = below - fl * ${FLOOR.toFixed(2)};
-        float aa = max(fwidth(along), fwidth(vW.y)) * 0.75;
+        float px = max(fwidth(along), fwidth(vW.y)), aa = px * 0.75;
         int sty = int(vFac.z + 0.5);
         // each style sets its pane: margin to the piers either side (ww), and its top and bottom measured down
         // from the top of the floor. render: plain punched windows; brick: tall narrow sashes; office: ribbon
@@ -132,17 +136,17 @@ const fragmentShader = `
         } else if (sty == ${FACADE.STONE}) {
           float ry = vW.y / 0.6, bx = along / 1.1 + floor(ry) * 0.5;
           float joint = max(band(fract(ry), -1.0, 0.03, fwidth(ry)), band(fract(bx), -1.0, 0.02, fwidth(bx)));
-          col = mix(col, uInkCol, joint * patchy * wall * 0.3 * fine);
+          col = mix(col, uInkCol, joint * patchy * wall * 0.3 * lineKeep(0.02, px));
           // pale dressed-stone surrounds, a string course at every floor, and quoins stacked up the corners
           float surround = inside * band(lu, ww - 0.18, bw - ww + 0.18, aa) * band(lv, wt - 0.2, wb, aa) - pane;
           float course = inside * band(lv, ${FLOOR.toFixed(2)} - 0.2, ${FLOOR.toFixed(2)}, aa);
           float edge = min(along, len - along), qw = mod(floor(vW.y / 0.5), 2.0) > 0.5 ? 0.75 : 0.5;
-          float quoin = step(edge, qw) * (1.0 - band(fract(vW.y / 0.5), -1.0, 0.05, fwidth(vW.y / 0.5)) * fine);
+          float quoin = smoothstep(qw + aa, qw - aa, edge) * (1.0 - band(fract(vW.y / 0.5), -1.0, 0.05, fwidth(vW.y / 0.5)) * lineKeep(0.025, px));
           col = mix(col, base * 1.16 * light, max(max(surround, course), quoin) * fine);
         } else if (sty == ${FACADE.OFFICE}) {
           // precast spandrel panels: a joint across the middle of each, and one at every mullion
           float joint = inside * band(lv, 2.95, 3.0, aa) + inside * band(lu, -1.0, 0.03, aa) * (1.0 - pane);
-          col = mix(col, uInkCol, min(joint, 1.0) * fine * 0.4);
+          col = mix(col, uInkCol, min(joint, 1.0) * lineKeep(0.05, px) * 0.4);
         }
         // glass reflects the sky, brighter toward the top of each pane, with a little variation per window
         float pv = (lv - wt) / (wb - wt);
@@ -154,7 +158,8 @@ const fragmentShader = `
         float slats = 1.0 - 0.18 * band(fract(ry), -1.0, 0.2, fwidth(ry)) * keep(14.0, vW.y);
         vec3 blindCol = mix(vec3(0.86, 0.83, 0.76) * light * slats, uLitCol * 0.95, on * 0.75);
         glass = mix(glass, uLitCol * (0.8 + 0.3 * h), on);
-        glass = mix(glass, blindCol, blind * step(pv, drop));
+        float pa = aa / (wb - wt);
+        glass = mix(glass, blindCol, blind * smoothstep(drop + pa, drop - pa, pv));
         // the panes sit back in the wall: the head and one jamb of each reveal are in shadow
         float reveal = max(1.0 - smoothstep(wt + 0.09, wt + 0.3, lv), 1.0 - smoothstep(ww + 0.09, ww + 0.24, lu));
         glass *= 1.0 - 0.3 * reveal * fine * (1.0 - on * 0.5);
@@ -163,23 +168,29 @@ const fragmentShader = `
         // are split by a centre bar, sashes by a meeting rail
         float bar = sty == ${FACADE.BRICK} ? band(lv, (wt + wb) * 0.5 - 0.03, (wt + wb) * 0.5 + 0.03, aa)
                   : sty == ${FACADE.OFFICE} ? 0.0 : band(lu, bw * 0.5 - 0.03, bw * 0.5 + 0.03, aa);
-        col = mix(col, uInkCol, max(frame, bar * pane) * fine * 0.55);
-        col = mix(col, base * 1.12 * light, sill * fine);
+        col = mix(col, uInkCol, max(frame * lineKeep(0.09, px), bar * pane * lineKeep(0.06, px)) * fine * 0.55);
+        col = mix(col, base * 1.12 * light, sill * fine * lineKeep(0.15, px));
         // in the distance the grid gives way to painting: the wall goes to one flat colour and the windows become
         // a few big dabs on a coarse grid (~11 x 9 m), each a handful of brush hairs laid side by side. at night they're
         // lamplight; by day, glass with the odd sun glint
-        float far = smoothstep(${PAINT_NEAR.toFixed(1)}, ${PAINT_NEAR.toFixed(1)} + 110.0, vDepth);
+        // that happens by distance, and also wherever a bay is down to a dozen or so pixels (a wall seen side-on):
+        // a grid of windows a few pixels across, some lit and some with pale blinds, can only sparkle
+        float far = max(smoothstep(${PAINT_NEAR.toFixed(1)}, ${PAINT_NEAR.toFixed(1)} + 110.0, vDepth), 1.0 - smoothstep(10.0, 18.0, bw / px));
         vec2 dc = vec2(along / 11.0, below / 9.0), di = floor(dc), df = fract(dc);
         float dabOn = step(0.58, hash(di + vLo.xy * 0.13 + side * 3.1)) * inside;
         // five hairs per dab, each starting a little further in and running its own length
         float hy = (df.y - 0.2) / 0.55 * 5.0, hRow = floor(hy), hf = fract(hy);
         float hl = 0.4 + 0.5 * hash(di + hRow * 1.7 + 4.2);
         float hx = (df.x - 0.08 - hash(di + hRow * 2.9) * 0.08) / hl;
-        // once the hairs are thinner than a pixel their edges blur together instead of shimmering
-        float hw = max(0.06, fwidth(hy)), xw = max(0.04, fwidth(hx));
-        float hair = step(0.0, hy) * step(hy, 5.0) * band(hf, 0.1, 0.9, hw) * band(hx, 0.0, 1.0, xw);
-        // the brush runs dry toward the end of each hair: gaps open up along its last stretch
-        hair *= step(smoothstep(0.5, 1.0, hx) * 0.85, noise(vec2(hx * 6.0, hRow * 3.1 + di.x)));
+        // every edge is a soft ramp about a pixel wide. once the gaps between hairs get down to a couple of pixels the
+        // hairs merge into one solid dab, and the dry-brush breaks go with them: both would only flicker by then
+        // (the gap between hairs is a fifth of a hair, so it needs a hair at least ten pixels tall to show cleanly)
+        float hw = max(0.06, fwidth(hy)), xw = max(0.04, fwidth(hx)), sep = 1.0 - smoothstep(0.04, 0.1, fwidth(hy));
+        float hair = band(hy, 0.0, 5.0, hw) * mix(1.0, band(hf, 0.1, 0.9, hw), sep) * band(hx, 0.0, 1.0, xw);
+        // the brush runs dry toward the end of each hair: gaps open up along its last stretch, while they're big
+        // enough on screen to be gaps rather than speckle
+        float dry = smoothstep(0.5, 1.0, hx) * 0.85;
+        hair *= mix(1.0, smoothstep(dry - 0.08, dry + 0.08, noise(vec2(hx * 6.0, hRow * 3.1 + di.x))), sep * keep(6.0, hx));
         float dab = dabOn * hair;
         float lamp = step(1.0 - min(1.0, uLit * 1.6), hash(di + 2.3)), glint = step(0.55, hash(di + 5.1)) * lit;
         vec3 dabCol = mix(mix(mix(uGlass, uSkyRef, 0.35), uSunCol * 0.95, glint), uLitCol, lamp);
@@ -262,10 +273,11 @@ export function inkHullMat({ fog = true, painted = false, paintFar = false } = {
   });
 }
 // ink lines (crease edges, cables, rails). they are a single pixel wide, so they crawl once the thing they draw
-// is small on screen: they fade out from 50 to 130 m
+// is small on screen: they fade out from 50 to 130 m. they stay out of the depth buffer, or the ink pass would
+// trace each one as a crease of its own: a hairline that comes and goes between pixels, outlined, flickers badly
 export function inkLineMat() {
   return new THREE.ShaderMaterial({
-    uniforms: { ...INK }, transparent: true,
+    uniforms: { ...INK }, transparent: true, depthWrite: false,
     vertexShader: `varying float vDepth;
       void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `uniform vec3 uInkCol; varying float vDepth;

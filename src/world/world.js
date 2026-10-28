@@ -28,8 +28,11 @@ export function clearWorld() {
 export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); CL = new Batch(); CLH = new Batch(); D = new Decals(); ST = new BrushTowers();
   CPX = new Batch(); CPZ = new Batch(); }
 export function finishBuild() {
-  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), CL.build(matCloud), CLH.build(matCloudHull), D.build(), ST.build(),
-    CPX.build(matCopeX), CPZ.build(matCopeZ));
+  // the far skyline and the clouds go after everything nearer, so whatever the course hides of them is skipped by
+  // the depth test instead of being painted and then covered
+  const far = [ST.build(), CL.build(matCloud), CLH.build(matCloudHull)];
+  far.forEach((m, i) => { m.renderOrder = 5 + i; });
+  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), D.build(), CPX.build(matCopeX), CPZ.build(matCopeZ), ...far);
 }
 
 // ---------------------------------------------------------------- dressing helpers
@@ -167,9 +170,11 @@ function crown(x0, z0, x1, z1, y, c, a) {
     for (let k = 1; k < 4; k++) { const yy = y + legs + h * k / 4; for (let q = 0; q < 14; q++) { const a0 = q / 14 * 6.283, a1 = (q + 1) / 14 * 6.283; E.line(cx + Math.cos(a0) * (r + 0.02), yy, cz + Math.sin(a0) * (r + 0.02), cx + Math.cos(a1) * (r + 0.02), yy, cz + Math.sin(a1) * (r + 0.02)); } }
   }
   if (a() < 0.3) {
-    const mx = a(x0 + 1, x1 - 1), mz = a(z0 + 1, z1 - 1), h = a(8, 22);
-    B.box(mx - 0.3, y, mz - 0.3, mx + 0.3, y + h, mz + 0.3, theme.c.steel);
-    for (let k = 1; k <= 2; k++) E.line(mx - 1.2, y + h * (0.5 + k * 0.2), mz, mx + 1.2, y + h * (0.5 + k * 0.2), mz);
+    // a lattice mast, about as wide as a real one: thinner and it would be a pixel or two across from the course,
+    // and its outline would break up and flicker
+    const mx = a(x0 + 1.5, x1 - 1.5), mz = a(z0 + 1.5, z1 - 1.5), h = a(8, 22);
+    B.box(mx - 0.7, y, mz - 0.7, mx + 0.7, y + h, mz + 0.7, theme.c.steel);
+    for (let k = 1; k <= 2; k++) E.line(mx - 1.6, y + h * (0.5 + k * 0.2), mz, mx + 1.6, y + h * (0.5 + k * 0.2), mz);
   }
 }
 
