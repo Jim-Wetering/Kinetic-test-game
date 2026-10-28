@@ -41,17 +41,17 @@ canvas { display: block; }
 #speed { font: 500 68px/.9 var(--display); letter-spacing: 1px; font-variant-numeric: tabular-nums; }
 #speedBox .unit { font-size: 14px; letter-spacing: 3px; color: var(--dim); margin-top: 2px; }
 #speedBar { width: 260px; height: 4px; margin: 8px auto 0; background: rgba(21, 19, 15, .55); box-shadow: 0 0 0 1px rgba(21, 19, 15, .7); overflow: hidden; }
-#speedBar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--hud), var(--amber), var(--accent)); }
+#speedBar i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, var(--hud), var(--amber), var(--accent)); }
 
 #bl { position: absolute; bottom: 26px; left: 24px; font-size: 14px; letter-spacing: 2px; }
 #bl .row { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
 #bl .lbl { width: 70px; color: var(--dim); }
 .pips { display: flex; gap: 4px; }
 .pips b { width: 26px; height: 5px; background: rgba(21, 19, 15, .55); box-shadow: 0 0 0 1px rgba(21, 19, 15, .7); position: relative; overflow: hidden; }
-.pips b i { position: absolute; inset: 0; width: 0; background: var(--cyan); }
+.pips b i { position: absolute; inset: 0; width: 100%; transform-origin: left; transform: scaleX(0); background: var(--cyan); }
 #wj b i { background: var(--amber); }
 #stam { width: 120px; height: 5px; background: rgba(21, 19, 15, .55); box-shadow: 0 0 0 1px rgba(21, 19, 15, .7); position: relative; }
-#stam i { position: absolute; inset: 0; width: 100%; background: var(--lime); }
+#stam i { position: absolute; inset: 0; width: 100%; transform-origin: left; background: var(--lime); }
 #stam.low i { background: var(--accent); }
 /* notches every DASH_COST (30%) so you can read how many dashes are left */
 #stam::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(30% - 2px), var(--ink) calc(30% - 2px) 30%); }
@@ -61,7 +61,7 @@ canvas { display: block; }
 #styleBox { position: absolute; top: 16px; right: 24px; text-align: right; width: 240px; }
 #rank { font: 700 76px/.9 var(--display); transition: color .2s; }
 #meter { height: 4px; margin: 8px 0 10px auto; width: 190px; background: rgba(21, 19, 15, .55); box-shadow: 0 0 0 1px rgba(21, 19, 15, .7); }
-#meter i { display: block; height: 100%; width: 0; background: currentColor; }
+#meter i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(0); background: currentColor; }
 #feed div { font: 500 17px var(--display); letter-spacing: 1.5px; }
 #feed span { color: var(--amber); margin-left: 6px; }
 
