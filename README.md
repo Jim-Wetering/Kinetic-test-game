@@ -15,6 +15,14 @@ npm run build    # production build into dist/
 npm run preview  # serve the production build
 ```
 
+### Single HTML file
+
+```sh
+npm run build:html   # builds dist-html/index.html
+```
+
+This puts the whole game (three.js, scripts, styles and fonts) into one standalone `index.html` of about 1.3 MB. Double-click it to play in any modern browser. It needs no server or internet connection, so you can copy it anywhere or send it to someone. The build uses its own config, `vite.html.config.js`, so the desktop app build isn't affected.
+
 ### Desktop app (Windows .exe)
 
 The game is wrapped in [Electron](https://www.electronjs.org/) for a standalone desktop version.
