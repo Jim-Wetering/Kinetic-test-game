@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rng } from '../utils.js';
 import { scene, skyU, sun, hemi } from './scene.js';
-import { matHull, matCloudHull, matEdge, matGround, cpMats, pillar } from './materials.js';
+import { matHull, matGround } from './materials.js';
 import { INK, setColor } from './ink.js';
 import { postU } from './post.js';
 
@@ -62,6 +62,5 @@ export function applyTheme(name) {
   postU.uInk.value.set(T.ink); postU.uPaper.value = T.paper; postU.uVig.value = T.vig;
   sun.position.set(...T.sun).multiplyScalar(100); sun.color.set(T.sunCol);
   hemi.color.set(T.hor); hemi.groundColor.set(T.shade);
-  matHull.color.set(T.ink); matCloudHull.color.set(T.ink); matEdge.color.set(T.ink); setColor(matGround, T.ground);
-  cpMats.next.color.set(T.accent); pillar.material.color.set(T.accent);
+  matHull.color.set(T.ink); setColor(matGround, T.ground);
 }

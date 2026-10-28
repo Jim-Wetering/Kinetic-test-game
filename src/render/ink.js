@@ -26,6 +26,9 @@ export { NOISE };
 // window grid, in metres. floors are measured down from the roof, under a parapet band; bays are fitted to
 // each face so every face starts and ends on a pier
 export const FLOOR = 3.5, PARAPET = 1.4, BAY = 3.1;
+// distances (m) where drawing gives way to painting: past PAINT_NEAR detail turns into brush strokes of colour,
+// and black ink outlines fade out between INK_NEAR and INK_FAR, leaving far shapes as strokes of their own colour
+export const PAINT_NEAR = 110, INK_NEAR = 130, INK_FAR = 300;
 
 const vertexShader = `
   uniform vec3 uBase;
@@ -93,14 +96,19 @@ const fragmentShader = `
         vec3 glass = mix(uGlass, uSkyRef, 0.45 * (1.0 - (lv - 0.55) / 1.7) * (0.5 + h)) * mix(0.75, 1.0, lit);
         float on = step(1.0 - uLit, hash(vec2(fl, cell) + vLo.zw * 0.21 + 3.7));
         glass = mix(glass, uLitCol * (0.8 + 0.3 * h), on);
-        // far away the grid only shimmers: fade it to its average tone
-        float near = 1.0 - smoothstep(220.0, 520.0, vDepth);
-        col = mix(col, glass, pane * near);
+        // in the distance the grid gives way to painting: each floor's windows become one rough horizontal stroke
+        // of glass colour, wobbling along its length and broken here and there (the post pass drags these into
+        // brush strokes). very far off it settles to the average tone
+        float far = smoothstep(${PAINT_NEAR.toFixed(1)}, ${PAINT_NEAR.toFixed(1)} + 110.0, vDepth);
+        float gone = smoothstep(520.0, 900.0, vDepth);
+        float wob1 = (noise(vec2(along * 0.03, fl * 1.7)) - 0.5) * 0.5, wob2 = (noise(vec2(along * 0.025 + 9.0, fl * 2.3)) - 0.5) * 0.5;
+        float row = inside * band(lv, 0.5 + wob1, 2.3 + wob2, aa) * step(0.36, noise(vec2(along * 0.04 + fl * 3.1, fl * 0.7)));
+        col = mix(col, glass, mix(pane, row, far) * (1.0 - gone));
         // the thin frames and sills go first, before they're thinner than a pixel
         float fine = 1.0 - smoothstep(50.0, 130.0, vDepth);
         col = mix(col, uInkCol, frame * fine * 0.55);
         col = mix(col, base * 1.12 * light, sill * fine);
-        col = mix(col, mix(col, uGlass, 0.3), (1.0 - near) * inside);
+        col = mix(col, mix(col, uGlass, 0.3), gone * inside);
       }
       // roofs: rolled membrane in 1.2 m strips with dark seams, patched and rain-stained
       if (n.y > 0.5) {
@@ -142,3 +150,28 @@ export function inkMat({ color = 0xffffff, vertexColors = false, fog = true, fla
 }
 // the same material's colour, whatever kind it is
 export const setColor = (m, hex) => (m.uniforms ? m.uniforms.uBase.value.set(hex) : m.color.set(hex));
+
+// back-face hull for the batched world: an ink outline up close; with distance it takes the shape's own (lit)
+// colour, so a far silhouette is a fat stroke of paint rather than a black line
+export function inkHullMat({ fog = true } = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...INK, uFog: { value: fog ? 1 : 0 } }, side: THREE.BackSide, vertexColors: true,
+    vertexShader: `varying vec3 vC; varying float vDepth;
+      void main() { vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uInkCol, uSunCol, uShade, uFogCol; uniform float uFogNear, uFogFar, uFog; varying vec3 vC; varying float vDepth;
+      void main() {
+        vec3 col = mix(uInkCol, vC * mix(uShade, uSunCol, 0.55), smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, vDepth));
+        gl_FragColor = vec4(mix(col, uFogCol, smoothstep(uFogNear, uFogFar, vDepth) * uFog), 1.0);
+      }`,
+  });
+}
+// ink lines (crease edges, cables, rails) that fade out over the same distance
+export function inkLineMat() {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...INK }, transparent: true,
+    vertexShader: `varying float vDepth;
+      void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uInkCol; varying float vDepth;
+      void main() { gl_FragColor = vec4(uInkCol, 1.0 - smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, vDepth)); }`,
+  });
+}

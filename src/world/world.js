@@ -3,7 +3,8 @@ import { EPS } from '../config.js';
 import { rng, rand } from '../utils.js';
 import { scene } from '../render/scene.js';
 import { Batch, Edges } from '../render/batch.js';
-import { matToon, matFacade, matCloud, matCloudHull, matHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats } from '../render/materials.js';
+import { matToon, matFacade, matCloud, matCloudHull, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
+  brushRingGeo } from '../render/materials.js';
 import { FLOOR, PARAPET, BAY } from '../render/ink.js';
 import { Decals, artCell } from '../render/graffiti.js';
 import { theme, C, pick, jitter } from '../render/themes.js';
@@ -23,7 +24,7 @@ export function clearWorld() {
 // static geometry is batched into a few big meshes: start a fresh set, generate, then finish
 export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); CL = new Batch(); CLH = new Batch(); D = new Decals(); }
 export function finishBuild() {
-  world.add(B.build(matToon), BF.build(matFacade), HB.build(matHull), E.build(matEdge), CL.build(matCloud), CLH.build(matCloudHull), D.build());
+  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), CL.build(matCloud), CLH.build(matCloudHull), D.build());
 }
 
 // ---------------------------------------------------------------- dressing helpers
@@ -170,7 +171,7 @@ function hookBlock(center) {
   const cable = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.2, 0.75, 0), new THREE.Vector3(-0.2, 160, 0),
     new THREE.Vector3(0.2, 160, 0), new THREE.Vector3(0.2, 0.75, 0)]), matEdge);
   mesh.add(blockM, hook, cable);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.035, 6, 48), matAnchorRing);
+  const ring = new THREE.Mesh(brushRingGeo(2.2, 0.1), matAnchorRing);
   mesh.add(ring);
   mesh.position.copy(center); world.add(mesh);
   return { mesh, ring };
@@ -278,8 +279,9 @@ export function addCp(x, top, zz, yaw, opts = {}) {
   const finish = !!opts.finish;
   // plane checkpoints are gates across a course: crossed by passing them along dir within halfW of the line
   const c = { x, y: top + 3, z: zz, top, yaw, finish, plane: !!opts.plane, dir: opts.dir || { x: 0, z: -1 }, halfW: opts.halfW || 7 };
-  c.mesh = new THREE.Mesh(new THREE.TorusGeometry(finish ? 5 : 3.4, finish ? 0.3 : 0.2, 8, 48), cpMats.later);
-  c.mesh.position.set(x, c.y, zz); c.mesh.rotation.y = yaw;
+  c.mesh = new THREE.Mesh(brushRingGeo(finish ? 5 : 3.4, finish ? 0.42 : 0.3), cpMats.later);
+  // each ring's stroke starts somewhere different round the circle
+  c.mesh.position.set(x, c.y, zz); c.mesh.rotation.set(0, yaw, artRng(x, top, zz)() * Math.PI * 2);
   world.add(c.mesh); cps.push(c);
 }
 

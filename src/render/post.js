@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { renderer, scene, cam } from './scene.js';
-import { NOISE } from './ink.js';
+import { NOISE, PAINT_NEAR, INK_NEAR, INK_FAR } from './ink.js';
 
 // ---------------------------------------------------------------- ink post pass
 // the world renders into a target with a depth texture, the viewmodel into its own transparent target, then one
@@ -58,6 +58,36 @@ const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMater
       float zn = min(z0, min(min(linZ(vUv + vec2(px.x * nb, 0.0)), linZ(vUv - vec2(px.x * nb, 0.0))),
                              min(linZ(vUv + vec2(0.0, px.y * nb)), linZ(vUv - vec2(0.0, px.y * nb)))));
       vec3 wp = (uCamWorld * vec4((vUv * 2.0 - 1.0) * uTan * zn, -zn, 1.0)).xyz;
+      // far away, paint instead of draw: the image is dragged into short strokes of its own colour. each sample
+      // along a stroke only takes colour from the same surface, so shapes hold while windows and detail smear into
+      // a few bands of paint; silhouettes go ragged. stroke angle, length and bristles are looked up in world space
+      // so the paint stays put as you move. the sky (past 1900 m) is already painted
+      // world alpha drops below 1 where a brush ring is painted over the scene (see brushRingMat): those pixels and
+      // samples are left out of the smear and the ink, so the rings stay crisp and never get outlined
+      float solid = texture2D(tWorld, vUv).a;
+      float k1080 = uRes.y / 1080.0;
+      float paint = smoothstep(${PAINT_NEAR.toFixed(1)}, ${(PAINT_NEAR + 140).toFixed(1)}, z0) * (1.0 - step(1900.0, z0)) * solid;
+      if (paint > 0.0) {
+        float ang = (noise(wp.xz * 0.015 + wp.y * 0.02) - 0.5) * 0.8;
+        float len = k1080 * mix(2.5, 7.0, smoothstep(${(PAINT_NEAR + 60).toFixed(1)}, 600.0, z0)) * (0.6 + 0.8 * noise(wp.xz * 0.04 - wp.y * 0.05));
+        vec2 dir = vec2(cos(ang), sin(ang)) * px * len;
+        vec2 jit = (vec2(noise(wp.xy * 0.35 + wp.z * 0.2), noise(wp.zy * 0.35 - wp.x * 0.2)) - 0.5) * px * 5.0 * k1080 * paint;
+        vec2 uv0 = vUv + jit;
+        float zc = linZ(uv0);
+        vec4 s0 = texture2D(tWorld, uv0);
+        vec3 acc = s0.rgb * s0.a; float wsum = s0.a;
+        for (int i = 1; i <= 4; i++) {
+          for (int k = 0; k < 2; k++) {
+            vec2 uv2 = uv0 + dir * float(i) * (k == 0 ? 1.0 : -1.0);
+            vec4 s2 = texture2D(tWorld, uv2);
+            float same = (1.0 - smoothstep(0.02, 0.06, abs(linZ(uv2) - zc) / zc)) * s2.a;
+            acc += s2.rgb * same; wsum += same;
+          }
+        }
+        // bristle streaks running with the stroke, coarse enough not to alias far off
+        vec3 smear = acc / max(wsum, 1e-3) * (0.9 + 0.18 * noise(vec2((wp.x + wp.z) * 0.03, wp.y * 0.25)));
+        col = mix(col, smear, paint * step(0.01, wsum));
+      }
       // brush radius: fat up close and finer into the distance, swelling and thinning along the stroke
       float swell = noise(wp.xz * 0.5 + wp.y * 0.37) * 0.7 + noise(wp.xz * 0.13 - wp.y * 0.11) * 0.3;
       float R = uLine * (uRes.y / 1080.0) * mix(1.0, 0.3, smoothstep(20.0, 320.0, zn)) * (0.3 + 1.5 * swell);
@@ -75,8 +105,8 @@ const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMater
       float edge = smoothstep(t, t * 1.4, lap / c);
       float fleck = step(0.7, noise(wp.xy * 6.5 + wp.z * 5.3)) * closeUp;
       edge = max(edge, smoothstep(t * 0.6, t * 0.8, lap / c) * fleck);
-      // distant strokes go a little grey, like ink thinned with water
-      col = mix(col, uInk, edge * mix(1.0, 0.6, smoothstep(150.0, 700.0, zn)));
+      // black ink is for things close by; far shapes are left as strokes of their own colour
+      col = mix(col, uInk, edge * solid * (1.0 - smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, zn)));
       vec4 v = texture2D(tView, vUv);
       col = mix(col, v.rgb, v.a);
       // paper: fine grain plus long fibres, multiplied in like ink soaking into washi

@@ -2,3 +2,6 @@ node_modules/
 dist/
 release/
 dist-html/
+
+# art reference images, kept local
+references/
