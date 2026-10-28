@@ -26,8 +26,10 @@ export const postU = {
   uRes: { value: new THREE.Vector2(1, 1) }, uPx: { value: 1 }, uNear: { value: cam.near }, uFar: { value: cam.far },
   uInk: { value: new THREE.Color(0, 0, 0) }, uPaper: { value: 0.3 }, uPaperCol: { value: new THREE.Color(1, 0.97, 0.9) },
   uVig: { value: 0.5 }, uTime: { value: 0 },
+  // the grade: shadow and highlight tints (split toning), and the theme's complementary scrape colour
+  uLo: { value: new THREE.Color(0, 0, 0) }, uHi: { value: new THREE.Color(1, 1, 1) }, uScrape: { value: new THREE.Color(1, 0.5, 0.2) },
   // brush radius in pixels at 1080p for something right in front of you; it thins out with distance
-  uLine: { value: 6.5 },
+  uLine: { value: 5.0 },
   // camera-to-world matrix and tan of the half field of view (x, y), to rebuild each pixel's world position, and
   // this frame's sub-pixel camera nudge in clip space
   uCamWorld: { value: new THREE.Matrix4() }, uTan: { value: new THREE.Vector2(1, 1) }, uJit: { value: new THREE.Vector2() },
@@ -92,7 +94,7 @@ const inkMat = pass(`
       // metres per pixel at that depth: world-space texture finer than a few pixels is faded out, never drawn
       float wpx = zn * 2.0 * uTan.y / uRes.y;
       // world alpha marks what to leave alone: below 1 where a brush ring is painted over the scene (see
-      // brushRingMat), 0.5 on clouds, which are soft paint already. rings stay out of the ink, so they never get
+      // brushRingMat), 0.5 on the brush-stroke skyline, which is soft paint already. rings stay out of the ink, so they never get
       // outlined, and neither gets the frayed tops below
       float solid = texture2D(tWorld, vUv).a;
       float k1080 = uRes.y / 1080.0;
@@ -152,7 +154,7 @@ const inkMat = pass(`
         float dry = smoothstep(0.3, 0.7, noise(vec2(eAlong * 0.12, eAcross * 0.05 + 3.0)));
         float hairs = smoothstep(0.24, 0.56, bristles(eAcross, eAlong, zn, 2.2));
         float bite = smoothstep(0.7, 0.8, bristles(eAlong, eAcross, zn, 14.0));
-        edge *= mix(1.0, hairs * (1.0 - bite), (1.0 - core) * mix(0.35, 1.0, dry));
+        edge *= mix(1.0, hairs * (1.0 - bite), (1.0 - core) * mix(0.6, 1.0, dry));
         // where the paint drags thin, the stroke shows grey streaks running along it, and the shape shows through
         // a little; the core stays solid black
         float drag = (1.0 - core) * (1.0 - smoothstep(0.35, 0.65, bristles(eAcross, eAlong, zn, 3.5))) * mix(0.3, 0.8, dry);
@@ -211,35 +213,68 @@ const taaMat = pass(`
       gl_FragColor = vec4(mix(c, (c * wc + h * wh) / (wc + wh), valid), 1.0);
     }`);
 
-// the paper grain and the vignette's ragged rim are fixed to the screen, so they're painted once per window size
-// into a texture (grain in red, vignette in green) rather than worked out again every frame
+// the canvas grain, the vignette's ragged rim and the grunge laid over the picture are fixed to the screen, so
+// they're painted once per window size into a texture rather than worked out again every frame: grain in red,
+// vignette in green, dark grunge (dry-brush scrapes, splatter) in blue, pale grunge (scratches, a dragged lighter
+// brush) in alpha
 const paperMat = pass(`
     uniform vec2 uOut; uniform float uPx;
     varying vec2 vUv;
     ${NOISE}
     void main() {
       vec2 sp = vUv * uOut / uPx;
-      // paper: fine grain plus long fibres
+      // canvas: fine grain plus long fibres
       float grain = noise(sp * 0.9) * 0.5 + noise(sp * 0.23) * 0.3 + noise(vec2(sp.x * 0.05, sp.y * 0.6)) * 0.2;
-      // ink-wash vignette with a ragged, brushed rim
+      // the same layout at any resolution: units of a 1080-pixel-tall screen
+      vec2 p = vec2(vUv.x * uOut.x / uOut.y, vUv.y) * 1080.0;
       vec2 q = vUv - 0.5; q.x *= uOut.x / uOut.y;
-      float vig = length(q) + (noise(sp / 60.0) - 0.5) * 0.12;
-      gl_FragColor = vec4(grain, smoothstep(0.62, 1.05, vig), 0.0, 1.0);
+      // a brushed vignette: the rim is dragged sideways in streaks, like the edge of a rough wash
+      float vig = length(q) + (noise(sp / 60.0) - 0.5) * 0.12 + (noise(vec2(p.x / 400.0, p.y / 9.0)) - 0.5) * 0.1;
+      // the grunge gathers toward the edges and corners; the middle, where you're looking, stays mostly clean
+      float rim = smoothstep(0.32, 0.8, length(q * vec2(0.85, 1.15)));
+      // dry-brush scrapes: wide horizontal drags of a near-dry brush, broken into hairs and gaps along their length
+      float drag = smoothstep(0.55, 0.75, noise(vec2(p.x / 520.0, p.y / 70.0) + 3.0));
+      float hairs = smoothstep(0.5, 0.7, noise(vec2(p.x / 180.0, p.y / 1.6))) * smoothstep(0.35, 0.6, noise(vec2(p.x / 60.0, p.y / 6.0) + 9.0));
+      float scrape = drag * hairs;
+      // splatter: clusters of flicked drops, a few big and many small
+      float cluster = smoothstep(0.62, 0.85, noise(p / 220.0 + 17.0));
+      float drops = smoothstep(0.84, 0.88, noise(p / 4.0)) + smoothstep(0.88, 0.92, noise(p / 11.0 + 5.0));
+      float splat = min(1.0, drops) * cluster;
+      // scratches: thin, broken vertical scores through the paint
+      float col = floor(p.x / 3.0);
+      float scratch = step(0.994, hash(vec2(col, 2.0))) * smoothstep(0.55, 0.75, noise(vec2(col, p.y / 120.0)));
+      // pale: a lighter brush dragged across the top in a few places
+      float pale = smoothstep(0.62, 0.8, noise(vec2(p.x / 700.0, p.y / 50.0) + 41.0)) * hairs;
+      gl_FragColor = vec4(grain, smoothstep(0.55, 1.0, vig), clamp((scrape * 0.8 * mix(0.1, 1.0, rim) + splat * rim), 0.0, 1.0),
+        clamp((scratch * 0.6 + pale * 0.8) * mix(0.2, 1.0, rim), 0.0, 1.0));
     }`);
 
 const compMat = pass(`
     uniform sampler2D tHist, tView, tPaper;
     uniform float uPaper, uVig;
-    uniform vec3 uInk, uPaperCol;
+    uniform vec3 uInk, uPaperCol, uLo, uHi, uScrape;
     varying vec2 vUv;
     void main() {
       vec3 col = texture2D(tHist, vUv).rgb;
+      vec4 pv = texture2D(tPaper, vUv);
+      // the grade, on the world only: a little more contrast, then split toning, where part of the colour is swapped
+      // for its brightness tinted cool in the shadows and warm in the light, so the whole picture shares one dirty
+      // palette
+      vec3 W = vec3(0.3, 0.59, 0.11);
+      col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
+      float L = dot(col, W);
+      vec3 lo = uLo / max(dot(uLo, W), 0.01), hi = uHi / max(dot(uHi, W), 0.01);
+      col = mix(col, L * mix(lo, hi, smoothstep(0.08, 0.7, L)), 0.28);
+      // the grunge over it: dark dry-brush scrapes and splatter, then pale scratches and drags in a mix of the
+      // canvas and the theme's scrape colour
+      col = mix(col, uInk, pv.b * 0.6);
+      col = mix(col, mix(uPaperCol * 0.9, uScrape, 0.45), pv.a * 0.4);
+      // the arms and legs go on top, untouched by any of that
       vec4 v = texture2D(tView, vUv);
       col = mix(col, v.rgb, v.a);
-      vec2 pv = texture2D(tPaper, vUv).rg;
-      // the paper multiplied in, like ink soaking into washi, then the vignette
-      col *= mix(vec3(1.0), uPaperCol * (0.9 + 0.16 * pv.x), uPaper);
-      col = mix(col, uInk, pv.y * uVig);
+      // the canvas multiplied in, then the vignette
+      col *= mix(vec3(1.0), uPaperCol * (0.9 + 0.16 * pv.r), uPaper);
+      col = mix(col, uInk, pv.g * uVig);
       gl_FragColor = vec4(col, 1.0);
     }`);
 

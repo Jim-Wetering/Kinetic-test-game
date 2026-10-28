@@ -4,21 +4,18 @@ import { inkMat, inkHullMat, inkLineMat, NOISE } from './ink.js';
 
 // ---------------------------------------------------------------- ink materials
 // polygon offset pushes faces back so the crease lines always win the depth test
-export const matToon = inkMat({ vertexColors: true, polygonOffset: true });
+export const matToon = inkMat({ vertexColors: true, polygonOffset: true, grime: true });
 // roof copings: a pale dry-brush highlight stroke along each edge, one material per direction of the bristles
-export const matCopeX = inkMat({ vertexColors: true, polygonOffset: true, streak: 'x' });
-export const matCopeZ = inkMat({ vertexColors: true, polygonOffset: true, streak: 'z' });
+export const matCopeX = inkMat({ vertexColors: true, polygonOffset: true, streak: 'x', grime: true });
+export const matCopeZ = inkMat({ vertexColors: true, polygonOffset: true, streak: 'z', grime: true });
 // building walls: the same ink shading plus a window grid
-export const matFacade = inkMat({ vertexColors: true, polygonOffset: true, facade: true });
-// clouds stay bright and puffy: only a soft shade on the underside
-export const matCloud = inkMat({ vertexColors: true, fog: false, flat: 0.65, painted: true });
+export const matFacade = inkMat({ vertexColors: true, polygonOffset: true, facade: true, grime: true });
 // back-face hulls: the thick brush outline around every shape. the batched world's hulls and ink lines turn
 // into paint with distance; the viewmodel and hook blocks are always close, so they keep plain ink
 export const matHull = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
 export const matWorldHull = inkHullMat();
-export const matCloudHull = inkHullMat({ fog: false, painted: true, paintFar: true });
 export const matEdge = inkLineMat();
-export const matGround = inkMat({ color: 0x667788 });
+export const matGround = inkMat({ color: 0x667788, grime: true });
 // grapple points are crane hooks: a yellow hook block, with a thin target ring so they still read from afar
 export const matAnchor = inkMat({ color: 0xe0a526 });
 

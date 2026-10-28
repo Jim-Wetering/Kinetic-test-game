@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { EPS } from '../config.js';
-import { rng, rand } from '../utils.js';
+import { rand } from '../utils.js';
 import { scene } from '../render/scene.js';
 import { Batch, Edges } from '../render/batch.js';
-import { matToon, matFacade, matCopeX, matCopeZ, matCloud, matCloudHull, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
+import { matToon, matFacade, matCopeX, matCopeZ, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
   brushRingGeo } from '../render/materials.js';
 import { FLOOR, PARAPET, BAY, FACADE } from '../render/ink.js';
 import { Decals, artCell } from '../render/graffiti.js';
@@ -15,7 +15,7 @@ const world = new THREE.Group(); scene.add(world);
 export const colliders = [], anchors = [], cps = [];
 // spawn point and fall-out height of the loaded level, set by the generators and loadLevel
 export const level = { spawn: { x: 0, y: EPS, z: 0, yaw: 0 }, killY: -60 };
-let B, BF, HB, E, CL, CLH, D, ST, CPX, CPZ;
+let B, BF, HB, E, D, ST, CPX, CPZ;
 // skyline towers further than this (m) outside the course are painted as single brush strokes, not built
 const STROKE_FROM = 130;
 
@@ -25,14 +25,46 @@ export function clearWorld() {
   colliders.length = 0; anchors.length = 0; cps.length = 0;
 }
 // static geometry is batched into a few big meshes: start a fresh set, generate, then finish
-export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); CL = new Batch(); CLH = new Batch(); D = new Decals(); ST = new BrushTowers();
+export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); D = new Decals(); ST = new BrushTowers();
   CPX = new Batch(); CPZ = new Batch(); }
 export function finishBuild() {
-  // the far skyline and the clouds go after everything nearer, so whatever the course hides of them is skipped by
-  // the depth test instead of being painted and then covered
-  const far = [ST.build(), CL.build(matCloud), CLH.build(matCloudHull)];
-  far.forEach((m, i) => { m.renderOrder = 5 + i; });
-  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), D.build(), CPX.build(matCopeX), CPZ.build(matCopeZ), ...far);
+  cables();
+  // the far skyline goes after everything nearer, so whatever the course hides of it is skipped by the depth test
+  // instead of being painted and then covered
+  const far = ST.build();
+  far.renderOrder = 5;
+  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), D.build(), CPX.build(matCopeX), CPZ.build(matCopeZ), far);
+}
+// power and phone lines slung between neighbouring roofs, sagging under their own weight: the tangle of wires
+// over every street. purely dressing, nothing to collide with
+function cables() {
+  const bs = colliders.filter((b) => b.kind === 'building');
+  for (let i = 0; i < bs.length; i++) {
+    for (let j = i + 1; j < bs.length; j++) {
+      const p = bs[i], q = bs[j];
+      // the facing walls: the gap between the two blocks along x or z, with some overlap on the other axis
+      const gx = Math.max(q.min.x - p.max.x, p.min.x - q.max.x), gz = Math.max(q.min.z - p.max.z, p.min.z - q.max.z);
+      const alongX = gx > gz, gap = Math.max(gx, gz), side = alongX ? gz : gx;
+      if (gap < 3 || gap > 28 || side > -2) continue;
+      const a = artRng(p.min.x + q.max.x, p.max.y + q.max.y, p.min.z + q.max.z);
+      if (a() < 0.45) continue;
+      // where the wires cross: within the overlap of the two blocks
+      const lo = alongX ? Math.max(p.min.z, q.min.z) : Math.max(p.min.x, q.min.x), hi = alongX ? Math.min(p.max.z, q.max.z) : Math.min(p.max.x, q.max.x);
+      const [A, Bk] = (alongX ? p.max.x < q.min.x : p.max.z < q.min.z) ? [p, q] : [q, p];
+      const top = Math.min(A.max.y, Bk.max.y);
+      for (let k = 0, n = 1 + ((a() * 3) | 0); k < n; k++) {
+        const t = a(lo + 0.5, hi - 0.5), ya = top - a(1.5, 7), yb = ya + a(-2, 2), sag = gap * a(0.05, 0.12);
+        const P0 = alongX ? [A.max.x, ya, t] : [t, ya, A.max.z], P1 = alongX ? [Bk.min.x, yb, t + a(-1.5, 1.5)] : [t + a(-1.5, 1.5), yb, Bk.min.z];
+        // two strands a hand apart, so a wire still reads as a line at a distance
+        for (const o of [0, 0.06]) {
+          for (let s = 0; s < 12; s++) {
+            const u0 = s / 12, u1 = (s + 1) / 12, pt = (u) => [P0[0] + (P1[0] - P0[0]) * u, P0[1] + (P1[1] - P0[1]) * u - sag * 4 * u * (1 - u) + o, P0[2] + (P1[2] - P0[2]) * u];
+            E.line(...pt(u0), ...pt(u1));
+          }
+        }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------- dressing helpers
@@ -138,14 +170,19 @@ function dressBlock(x0, y0, z0, x1, y1, z1, blank, a) {
         for (let y = yl + 0.3; y < y1 + 0.9; y += 0.35) faceLine(F, t0 + 0.72, 0.15, y, t0 + 0.98, 0.15, y);
       }
     }
-    // street art: tags and throw-ups along the parapet ("heaven spots"), ghost signs and big pieces on blank walls
-    if (isBlank && F.len >= 10 && a() < 0.55) {
-      const w = Math.min(F.len * 0.82, 17), kind = a() < 0.55 ? 'ghost' : a() < 0.5 ? 'throw' : 'ad';
+    // street art: tags and throw-ups along the parapet ("heaven spots"), ghost signs and big pieces on blank walls,
+    // and on most walls more of it layered further down, the way every reachable surface gets bombed
+    if (isBlank && F.len >= 10 && a() < 0.8) {
+      const w = Math.min(F.len * 0.82, 17), kind = a() < 0.35 ? 'ghost' : a() < 0.65 ? 'throw' : 'ad';
       faceDecal(F, F.len / 2, y1, w, a(1.5, 5), artCell(kind, a()));
-    } else if (a() < 0.5) {
+    } else if (a() < 0.75) {
       const kind = a() < 0.55 ? 'tag' : a() < 0.75 ? 'throw' : 'stencil';
       const w = Math.min(F.len * 0.8, kind === 'throw' ? a(4.5, 7) : kind === 'tag' ? a(2.6, 4) : a(2, 3));
       faceDecal(F, a(w / 2, F.len - w / 2), y1, w, a(0.15, 0.6), artCell(kind, a()));
+    }
+    if (F.len >= 6 && a() < 0.55) {
+      const kind = a() < 0.6 ? 'tag' : a() < 0.7 ? 'paste' : 'throw', w = Math.min(F.len * 0.7, a(3, 6));
+      faceDecal(F, a(w / 2, F.len - w / 2), y1, w, a(6, 14), artCell(kind, a()));
     }
   }
   // downpipe at a corner
@@ -304,7 +341,7 @@ export function addCp(x, top, zz, yaw, opts = {}) {
   world.add(c.mesh); cps.push(c);
 }
 
-// distant skyline and clouds, outside the playable bounds: towers on podiums, setbacks and rooftop plant
+// distant skyline, outside the playable bounds: towers on podiums, setbacks and rooftop plant
 export function backdrop(bd) {
   const T = theme.c;
   for (let i = 0, tries = 0; i < 260 && tries < 3000; tries++) {
@@ -328,17 +365,6 @@ export function backdrop(bd) {
       const bl = block(x0, -90, z0, x1, top, z1, c, T.roof, a);
       crown(x0, z0, x1, z1, top, c, a);
       if (bl !== 0 && a() < 0.4) backdropArt(x0, z0, x1, z1, top, bl, a);
-    }
-  }
-  const cx0 = (bd.x0 + bd.x1) / 2, cz0 = (bd.z0 + bd.z1) / 2;
-  for (let i = 0; i < 26; i++) {
-    const a = rng() * Math.PI * 2, r = rand(500, 900), cx1 = cx0 + Math.cos(a) * r, cz1 = cz0 + Math.sin(a) * r, cy = bd.yRef + rand(140, 260);
-    for (let k = 0, n = 4 + (rng() * 4 | 0); k < n; k++) {
-      const s = rand(18, 40), g = new THREE.IcosahedronGeometry(1, 1), h = new THREE.IcosahedronGeometry(1, 1);
-      const px = cx1 + rand(-50, 50), py = cy + rand(-6, 10), pz = cz1 + rand(-30, 30);
-      g.scale(s * 1.6, s * 0.45, s); g.translate(px, py, pz);
-      h.scale(s * 1.6 + 1.6, s * 0.45 + 1.6, s + 1.6); h.translate(px, py, pz); // ink outline hull
-      CL.geo(g, T.cloud); CLH.geo(h, T.cloud);
     }
   }
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), matGround);

@@ -13,6 +13,9 @@ export const INK = {
   // facade windows: glass colour, the sky it reflects, warm lit-window colour and the share of windows lit
   uGlass: { value: new THREE.Color() }, uSkyRef: { value: new THREE.Color() }, uLitCol: { value: new THREE.Color(1, 0.85, 0.55) },
   uLit: { value: 0 },
+  // street grime (world surfaces only): the dirt that runs down and stains, the complementary colour scraped over
+  // walls with a dry brush, and how filthy it all is (0..1)
+  uDirt: { value: new THREE.Color() }, uScrape: { value: new THREE.Color() }, uGrime: { value: 0 },
 };
 
 const NOISE = `
@@ -55,8 +58,8 @@ const vertexShader = `
   }`;
 
 const fragmentShader = `
-  uniform vec3 uSunDir, uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol;
-  uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit, uMark;
+  uniform vec3 uSunDir, uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol, uDirt, uScrape;
+  uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit, uMark, uGrime;
   varying vec3 vN, vW, vC; varying float vDepth;
   #ifdef FACADE
     varying vec4 vLo; varying vec3 vFac;
@@ -209,6 +212,39 @@ const fragmentShader = `
     #endif
     // tops catch a touch more sky, so roofs pop against walls
     col *= 1.0 + max(n.y, 0.0) * 0.05;
+    #ifdef GRIME
+      // street grime, all anchored in world space on the same wall / roof coordinates as the broad brushwork (bp).
+      // every layer fades before its detail gets down to a few pixels, so none of it shimmers as you move
+      float gNear = 1.0 - smoothstep(60.0, 200.0, vDepth);
+      // big soft blotches of dirt soaked into the surface, the darkest at a dried tide-line round their edge
+      float gb = noise(bp * 0.09 + 3.0) * 0.7 + noise(bp * 0.31 + 8.0) * 0.3;
+      float blot = smoothstep(0.5, 0.75, gb) * 0.28 + smoothstep(0.48, 0.52, gb) * (1.0 - smoothstep(0.54, 0.6, gb)) * 0.08;
+      col = mix(col, uDirt * light * 1.4, blot * uGrime);
+      // runs: rain and rust washing down walls in long thin streaks of uneven length
+      if (vert > 0.5) {
+        float rx = bp.x * 2.2 + noise(vec2(bp.x * 0.4, bp.y * 0.05)) * 1.5;
+        float runs = smoothstep(0.58, 0.82, noise(vec2(rx, bp.y * 0.035))) * smoothstep(0.35, 0.6, noise(vec2(bp.x * 0.5, bp.y * 0.1 + 4.0)));
+        col = mix(col, uDirt * light * 1.6, runs * 0.38 * uGrime * keep(2.2, bp.x) * gNear);
+      }
+      // dry-brush scrapes: patches where a near-dry brush of the complementary colour was dragged across, leaving
+      // ragged bands of hairs (horizontal on walls, diagonal on roofs) with the surface showing through the breaks
+      float patchS = smoothstep(0.6, 0.74, noise(bp * vec2(0.07, 0.11) + 17.0));
+      float hairs = smoothstep(0.42, 0.62, noise(vec2(bp.x * 0.35, bp.y * 4.0))) * keep(4.0, bp.y)
+                  + (1.0 - keep(4.0, bp.y)) * 0.5;
+      float breaks = mix(1.0, smoothstep(0.3, 0.55, noise(vec2(bp.x * 1.6, bp.y * 11.0 + 5.0))), keep(11.0, bp.y));
+      float scrape = patchS * hairs * breaks * gNear;
+      col = mix(col, uScrape * mix(uShade, uSunCol, 0.35 + 0.65 * lit), scrape * 0.6 * uGrime);
+      // flicked splatter: sparse dark specks in a few clusters
+      // (drops a few centimetres across: they're seen from a step away, so any bigger and they read as puddles)
+      float sp = noise(bp * 14.0 + 31.0) * smoothstep(0.5, 0.75, noise(bp * 0.5 + 13.0));
+      float spk = smoothstep(0.62, 0.68, sp) * keep(14.0, bp.x) * keep(14.0, bp.y);
+      col = mix(col, uInkCol, spk * 0.5 * uGrime);
+      #ifdef FACADE
+        // walls sink into shadow the further they drop below the roof, so streets are dark slots between towers
+        // and the tops stand out against the sky
+        if (vert > 0.5) col *= mix(1.0, 0.45, smoothstep(4.0, 45.0, vFac.x - vW.y) * uGrime);
+      #endif
+    #endif
     #if defined(STREAK_X) || defined(STREAK_Z)
       // a pale highlight laid on with a dry brush: bristle streaks run the length of the strip, the paint thinning
       // to the colour underneath in long dashes. fades to plain paint where the streaks would be under a pixel
@@ -236,28 +272,30 @@ const fragmentShader = `
     // paper mottle in world space, so it sticks to surfaces
     col *= 0.95 + 0.08 * noise(vW.xz * 0.11 + vW.y * 0.07);
     float f = smoothstep(uFogNear, uFogFar, vDepth) * uFog;
-    // alpha tells the post pass what to leave alone: 0.5 marks shapes that are already soft paint (clouds)
+    // alpha tells the post pass what to leave alone: 0.5 marks shapes that are already soft paint (the brush-stroke skyline)
     gl_FragColor = vec4(mix(col, uFogCol, f), uMark);
   }`;
 
 // vertexColors meshes read their colour per vertex; anything else uses `color`.
-// fog: false for things that sit beyond the fog (clouds) or in the viewmodel pass. flat: 0..1, how much the
+// fog: false for things in the viewmodel pass. flat: 0..1, how much the
 // shadow side is lifted toward the lit colour (1 ignores the sun). facade: draw windows from the aLo / aFac
 // attributes a facade Batch writes
-// painted: already soft paint (clouds), so the post pass skips its distance streaking
+// painted: already soft paint, so the post pass skips its distance streaking
 // streak: 'x' or 'z' for a dry-brush highlight whose bristles run along that axis (roof copings)
-export function inkMat({ color = 0xffffff, vertexColors = false, fog = true, flat = 0, polygonOffset = false, facade = false, painted = false, streak = null } = {}) {
+// grime: street dirt, runs, scrapes and splatter (world surfaces; never the viewmodel)
+export function inkMat({ color = 0xffffff, vertexColors = false, fog = true, flat = 0, polygonOffset = false, facade = false, painted = false, streak = null,
+  grime = false } = {}) {
   return new THREE.ShaderMaterial({
     uniforms: { ...INK, uBase: { value: new THREE.Color(color) }, uFog: { value: fog ? 1 : 0 }, uFlat: { value: flat }, uMark: { value: painted ? 0.5 : 1 } },
     vertexShader, fragmentShader, vertexColors,
-    defines: { ...(facade ? { FACADE: '' } : {}), ...(streak ? { ['STREAK_' + streak.toUpperCase()]: '' } : {}) },
+    defines: { ...(facade ? { FACADE: '' } : {}), ...(streak ? { ['STREAK_' + streak.toUpperCase()]: '' } : {}), ...(grime ? { GRIME: '' } : {}) },
     polygonOffset, polygonOffsetFactor: polygonOffset ? 1 : 0, polygonOffsetUnits: polygonOffset ? 1 : 0,
   });
 }
 // the same material's colour, whatever kind it is
 export const setColor = (m, hex) => (m.uniforms ? m.uniforms.uBase.value.set(hex) : m.color.set(hex));
 
-// back-face hull for the batched world: an ink outline. with paintFar (clouds) it takes the shape's own (lit)
+// back-face hull for the batched world: an ink outline. with paintFar it takes the shape's own (lit)
 // colour with distance, so a far silhouette is a soft stroke of paint rather than a black line
 export function inkHullMat({ fog = true, painted = false, paintFar = false } = {}) {
   return new THREE.ShaderMaterial({

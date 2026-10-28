@@ -29,8 +29,8 @@ const vertexShader = `
   }`;
 
 const fragmentShader = `
-  uniform vec3 uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol;
-  uniform float uFogNear, uFogFar, uLit;
+  uniform vec3 uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol, uScrape;
+  uniform float uFogNear, uFogFar, uLit, uGrime;
   varying vec2 vM, vSize, vShape; varying vec3 vC; varying float vSeed, vDepth;
   ${NOISE}
   float band(float x, float a, float b, float w) { return smoothstep(a - w, a + w, x) - smoothstep(b - w, b + w, x); }
@@ -82,6 +82,12 @@ const fragmentShader = `
       spire = step(ax, max(sh, fwidth(x) * 3.0)) *step(1.0 - ex, y) * step(y, ${TOP.toFixed(1)} + 1.0) * (1.0 - body);
       body = max(body, spire);
     }
+    // dry patches: in places the brush ran out partway across, leaving horizontal hairs of paint with the sky
+    // showing between them (never along the very edge, so the silhouette still holds)
+    // (thin slits only: a wide gap would read as a hole through the building)
+    float dryP = smoothstep(0.7, 0.78, noise(vec2((x - c) / W * 1.3 + s, y * 0.018 + s * 0.3)));
+    float dryH = step(0.3, noise(vec2(x * 0.03 + s, y * 1.1))) * keep(1.1, y) + (1.0 - keep(1.1, y));
+    body *= 1.0 - dryP * (1.0 - dryH) * step(W * 0.12, side) * step(3.0, top);
     if (body < 0.5) discard;
     // paint: one flat colour per tower, lit from a side picked per tower, with a couple of broad streaks
     vec3 col = vC * mix(uShade, uSunCol, 0.55 + 0.4 * hash(vec2(s, 9.0)));
@@ -100,6 +106,11 @@ const fragmentShader = `
     float lamp = step(1.0 - min(1.0, uLit * 1.6), hash(di + 2.3));
     vec3 dab = mix(mix(uGlass, uSkyRef, 0.35), uLitCol, lamp);
     col = mix(col, dab, on * hairs);
+    // grunge: the stroke darkens as it drags down toward the street, and the odd tower carries a scrape of the
+    // complementary colour dragged across it
+    col *= mix(1.0, 0.55, smoothstep(10.0, 120.0, y) * uGrime);
+    float scr = smoothstep(0.66, 0.76, noise(vec2((x - c) / W * 2.0 + s * 2.0, y * 0.05 + s)));
+    col = mix(col, uScrape * mix(uShade, uSunCol, 0.6), scr * 0.55 * uGrime * step(0.5, hash(vec2(s, 2.0))));
     // the black ink outline: a band a few pixels wide inside the edge, never thinner than the stroke allows, that
     // runs dry into broken hairs along stretches of it
     // (a spire is all outline: a dark mast)
@@ -107,8 +118,9 @@ const fragmentShader = `
     float rim = max(1.0 - smoothstep(ow * 0.7, ow, min(side, top)), spire);
     rim *= mix(1.0, step(0.35, noise(vec2(y * 0.6 + x * 0.6, s + 11.0))), smoothstep(0.4, 0.7, noise(vec2(y * 0.05, s + 13.0))) * keep(0.6, y));
     // haze washes the paint out more than the ink, so the outline still reads far off
+    // (not a clean ink line: a darker drag of the tower's own paint, so the far city reads as painted masses)
     float fog = smoothstep(uFogNear, uFogFar, vDepth);
-    col = mix(mix(col, uFogCol, fog), mix(uInkCol, uFogCol, fog * 0.55), rim);
+    col = mix(mix(col, uFogCol, fog), mix(mix(uInkCol, col * 0.35, 0.5), uFogCol, fog * 0.55), rim * 0.6);
     // city haze hangs low over the streets: the feet of the towers wash out into it, so each one stands in the air
     // and the rows behind each other separate
     col = mix(col, uFogCol, (1.0 - smoothstep(10.0, 85.0, vSize.y - vM.y)) * 0.6);
