@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 import { scene } from './scene.js';
+import { inkMat } from './ink.js';
 
-// ---------------------------------------------------------------- toon materials
-// 3 hard light bands; RGBA so the toon shader's .rgb lookup is grey, not red-only
-export const toonRamp = new THREE.DataTexture(new Uint8Array([105, 105, 105, 255, 180, 180, 180, 255, 255, 255, 255, 255]), 3, 1, THREE.RGBAFormat);
-toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
-toonRamp.generateMipmaps = false; toonRamp.needsUpdate = true;
+// ---------------------------------------------------------------- ink materials
 // polygon offset pushes faces back so the crease lines always win the depth test
-export const matToon = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonRamp, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
-export const matCloud = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonRamp, fog: false });
+export const matToon = inkMat({ vertexColors: true, polygonOffset: true });
+// clouds stay bright and puffy: only a soft shade on the underside
+export const matCloud = inkMat({ vertexColors: true, fog: false, flat: 0.65 });
+// back-face hulls: the thick brush outline around every shape
 export const matHull = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
+export const matCloudHull = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide, fog: false });
 export const matEdge = new THREE.LineBasicMaterial({ color: 0x111111 });
-export const matGround = new THREE.MeshToonMaterial({ color: 0x667788, gradientMap: toonRamp });
-export const matAnchor = new THREE.MeshToonMaterial({ color: 0x2fd8ff, gradientMap: toonRamp });
+export const matGround = inkMat({ color: 0x667788 });
+export const matAnchor = inkMat({ color: 0x2fd8ff });
 export const matAnchorRing = new THREE.MeshBasicMaterial({ color: 0x2fd8ff });
 export const cpMats = {
   next: new THREE.MeshBasicMaterial({ color: 0xff3b1f }),

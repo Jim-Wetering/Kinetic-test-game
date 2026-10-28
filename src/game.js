@@ -31,7 +31,7 @@ export function checkCheckpoint() {
       if (game.bestLap === null || lt < game.bestLap) game.bestLap = lt;
       if (game.lap < lapsOf()) {
         game.lap++; game.lapStart = game.runTime; game.cpIndex = 0; setCpMats();
-        flash(`LAP ${game.lap}/${lapsOf()} · LAST LAP ${fmt(lt)}`, '#ffd34a');
+        flash(`LAP ${game.lap}/${lapsOf()} · LAST LAP ${fmt(lt)}`, '#ffc21a');
         sfx(523, 1046, .3, 'triangle', .1);
         return;
       }
@@ -48,7 +48,7 @@ export function respawn() {
   const s = level.spawn;
   if (c) resetPlayer(c.plane ? c.x + c.dir.x : c.x, c.top + EPS, c.plane ? c.z + c.dir.z : c.z, c.yaw); else resetPlayer(s.x, s.y, s.z, s.yaw);
   game.falls++; style.meter = 0; refreshNear();
-  flash('RESPAWN', '#ff9a7a');
+  flash('RESPAWN', '#ff2f8a');
 }
 export function restart() {
   const s = level.spawn;

@@ -1,8 +1,8 @@
 import { game } from '../state.js';
 
 // ---------------------------------------------------------------- style meter
-export const RANKS = [['D', 0, '#9aa3b5'], ['C', 15, '#7ad8ff'], ['B', 40, '#7aff9c'], ['A', 70, '#ffe27a'],
-  ['S', 105, '#ff9f4a'], ['SS', 150, '#ff5a3a'], ['SSS', 200, '#ff2e6a']];
+export const RANKS = [['D', 0, '#d8d2e6'], ['C', 15, '#2ae0ff'], ['B', 40, '#7cff4a'], ['A', 70, '#ffc21a'],
+  ['S', 105, '#ff8a1a'], ['SS', 150, '#ff3d3d'], ['SSS', 200, '#ff2f8a']];
 export const style = { meter: 0, total: 0, feed: [], last: [] };
 export function rankOf(m) { let r = RANKS[0]; for (const k of RANKS) if (m >= k[1]) r = k; return r; }
 export function addStyle(name, pts) {

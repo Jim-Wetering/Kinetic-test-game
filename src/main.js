@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import '@fontsource/rajdhani/500.css';
 import '@fontsource/rajdhani/600.css';
 import '@fontsource/rajdhani/700.css';
+import '@fontsource/bangers/400.css';
 import './style.css';
 import { EYE } from './config.js';
 import { clamp, load } from './utils.js';
 import { game, look, settings } from './state.js';
-import { renderer, scene, cam, camDir, sky } from './render/scene.js';
+import { cam, camDir, sky } from './render/scene.js';
+import { renderFrame } from './render/post.js';
 import { camfx, rope, initResize, drawSpeedLines, updateShockwaves } from './render/effects.js';
 import { anchors, cps } from './world/world.js';
 import { LEVELS, loadLevel } from './world/levels.js';
@@ -103,8 +105,7 @@ function frame(now) {
   }
 
   updateHud(dt, hs, canHook);
-  renderer.render(scene, cam);
-  renderViewmodel();
+  renderFrame(t, renderViewmodel);
   drawSpeedLines(hs);
 }
 requestAnimationFrame(frame);

@@ -1,28 +1,45 @@
 import * as THREE from 'three';
 import { rng } from '../utils.js';
 import { scene, skyU, sun, hemi } from './scene.js';
-import { matHull, matEdge, matGround, cpMats, pillar } from './materials.js';
+import { matHull, matCloudHull, matEdge, matGround, cpMats, pillar } from './materials.js';
+import { INK, setColor } from './ink.js';
+import { postU } from './post.js';
 
 // ---------------------------------------------------------------- themes
+// street-graffiti colour, cel-shaded seaside brightness and sumi-e ink on paper, mixed differently per level.
+// shade: what lit colours are multiplied by in shadow (a colour, never grey). paper/halftone/hatch/vig: 0..1
+// amounts of each ink effect. mount: the ink-wash mountain colour. disc: the sun's flat disc colour
 const THEMES = {
-  day: { top: '#2b78d8', hor: '#e6f6ff', low: '#9fb6c8', fog: '#d8ecfa', sun: [-0.4, 0.8, -0.45], sunCol: '#fff4d0', sunInt: 0.85,
-    hemiSky: '#ffffff', hemiGround: '#7a8a99', hemiInt: 0.55, bld: ['#f7f7f4', '#eef1f3', '#e4e9ec', '#fafafa'], roof: '#c3ccd3',
-    glass: '#4f9fd0', prop: '#8f9ba6', accent: '#ff3b1f', outline: '#1a1d24', ground: '#6b7a88', cloud: '#ffffff', lines: '20,30,45' },
-  gold: { top: '#3d64b8', hor: '#ffd9a0', low: '#c49a7a', fog: '#f6d3a6', sun: [0.6, 0.3, -0.7], sunCol: '#ffe0a0', sunInt: 0.95,
-    hemiSky: '#ffe9cc', hemiGround: '#6a5a6a', hemiInt: 0.5, bld: ['#fff3e3', '#f4e6d6', '#efe1cf', '#fffaf2'], roof: '#d6bfa4',
-    glass: '#2f6f9a', prop: '#9a8676', accent: '#ff3b1f', outline: '#2a1c18', ground: '#5a4a52', cloud: '#fff1dc', lines: '60,30,20' },
-  teal: { top: '#4f8794', hor: '#e3f2ec', low: '#93aaa3', fog: '#d3e6e0', sun: [-0.2, 0.9, 0.3], sunCol: '#ffffff', sunInt: 0.6,
-    hemiSky: '#f0fff8', hemiGround: '#5f7570', hemiInt: 0.7, bld: ['#eef3ef', '#dfe8e3', '#e8ede9'], roof: '#b9c7c1',
-    glass: '#2c7c78', prop: '#e2ad2a', accent: '#ff4a24', outline: '#14201e', ground: '#5a6e68', cloud: '#f4fbf8', lines: '15,35,30' },
-  dusk: { top: '#2f2463', hor: '#ff9fb3', low: '#7a5a86', fog: '#e6a3c0', sun: [0.3, 0.15, -0.9], sunCol: '#ffd0c0', sunInt: 0.8,
-    hemiSky: '#ffd6ea', hemiGround: '#4a3a66', hemiInt: 0.55, bld: ['#fbeef5', '#efe2f4', '#f6f0fb'], roof: '#cdb9d6',
-    glass: '#6b4fb8', prop: '#8d7aa0', accent: '#ff3b5c', outline: '#1e1430', ground: '#463a5e', cloud: '#ffe6f0', lines: '40,20,60' },
-  night: { top: '#0b1030', hor: '#3d4296', low: '#141633', fog: '#2a2d66', sun: [0.35, 0.6, 0.45], sunCol: '#c4d4ff', sunInt: 0.8,
-    hemiSky: '#8fa0ff', hemiGround: '#2a2440', hemiInt: 0.65, bld: ['#d9dcf5', '#c9cdef', '#e2e4fa'], roof: '#9da3cf',
-    glass: '#ffd36a', prop: '#6f74a8', accent: '#ff3b6b', outline: '#0a0b1a', ground: '#1c1f3a', cloud: '#5a5f9a', lines: '200,215,255' },
-  sunset: { top: '#1f1d52', hor: '#ff8f55', low: '#5a2a48', fog: '#e8906a', sun: [-0.25, 0.1, -1], sunCol: '#ffd08a', sunInt: 0.9,
-    hemiSky: '#ffc9a8', hemiGround: '#3a2a4a', hemiInt: 0.55, bld: ['#f2ecff', '#e4dcf5', '#ece8fa'], roof: '#bfb3d6',
-    glass: '#4a3c9a', prop: '#8a7da8', accent: '#ff3b1f', outline: '#1a1430', ground: '#3a2a44', cloud: '#ffd9c0', lines: '50,20,40' },
+  // bright seaside cel-shading: candy towers, deep blue sky, violet shadows
+  day: { top: '#1c63d8', hor: '#c4f1ff', low: '#2f86c4', fog: '#cfefff', sun: [-0.4, 0.8, -0.45], sunCol: '#fffbec', disc: '#fff6c8', sunR: 0.07,
+    shade: '#8f8fe0', bld: ['#fff0c4', '#ffd3e1', '#c4f3e2', '#ffe48c', '#d6e4ff'], roof: '#f6f1e6', glass: '#2fb2ff',
+    prop: '#ff9a3c', accent: '#ff3d6e', ink: '#1b1430', ground: '#2f86c4', cloud: '#ffffff', streak: '#ffffff', mount: '#6fa8e0',
+    paper: 0.22, halftone: 0.55, hatch: 0.2, vig: 0.35, lines: '27,20,48' },
+  // parchment and vermilion: cream walls, red roofs, sepia ink, heavy paper
+  gold: { top: '#d9c08e', hor: '#fbf0d6', low: '#b89668', fog: '#f1e2bf', sun: [0.6, 0.3, -0.7], sunCol: '#fff4dc', disc: '#e8452c', sunR: 0.065,
+    shade: '#c49a74', bld: ['#fbf3df', '#f3e5c6', '#efdfbf', '#f7ecd4'], roof: '#c94a30', glass: '#2c241d',
+    prop: '#3a2e26', accent: '#d42a26', ink: '#1a110b', ground: '#a88a60', cloud: '#fff8ea', streak: '#fffaf0', mount: '#5c4a38',
+    paper: 0.85, halftone: 0, hatch: 0.75, vig: 0.6, lines: '40,26,14' },
+  // sticker-bright construction site: acid yellow, mint, hot pink windows, teal shadows
+  teal: { top: '#12b8a8', hor: '#f4ffb4', low: '#23756d', fog: '#daf6c8', sun: [-0.2, 0.9, 0.3], sunCol: '#ffffff', disc: '#ffffff', sunR: 0.06,
+    shade: '#5fb0c8', bld: ['#f5ff7c', '#7cffd6', '#ffffff', '#ffb6e8'], roof: '#ece6ff', glass: '#ff2f9e',
+    prop: '#ffcf1a', accent: '#ff2f8a', ink: '#0f1a22', ground: '#23756d', cloud: '#ffffff', streak: '#ffffff', mount: '#24907f',
+    paper: 0.15, halftone: 0.9, hatch: 0.15, vig: 0.3, lines: '15,26,34' },
+  // street-at-dusk: purple sky into orange, pink and lilac walls, yellow roofs
+  dusk: { top: '#5a2bd8', hor: '#ffb06a', low: '#6e2c80', fog: '#ffa894', sun: [0.3, 0.15, -0.9], sunCol: '#ffe2b0', disc: '#fff0c0', sunR: 0.08,
+    shade: '#9a62d8', bld: ['#ffe7f3', '#ffd2a8', '#cbbaff', '#ffffff'], roof: '#ffd84a', glass: '#ff4fa8',
+    prop: '#2ad8ff', accent: '#ff2f6a', ink: '#1d0f2e', ground: '#5a2a70', cloud: '#ffd6e8', streak: '#ffe0c8', mount: '#7e3aa0',
+    paper: 0.2, halftone: 0.8, hatch: 0.3, vig: 0.4, lines: '29,15,46' },
+  // neon night: indigo towers with lit window bands, magenta and cyan accents, a pale moon
+  night: { top: '#06061a', hor: '#40208a', low: '#0b0b20', fog: '#271255', sun: [0.35, 0.6, 0.45], sunCol: '#b4dcff', disc: '#f4f2ff', sunR: 0.05,
+    shade: '#5a3ab0', bld: ['#5f63cc', '#7055c6', '#4f73d4'], roof: '#9196ee', glass: '#ffe24a',
+    prop: '#2affd5', accent: '#ff2fb0', ink: '#07051a', ground: '#140c33', cloud: '#3e3384', streak: '#6a4fc0', mount: '#1a1046',
+    paper: 0.1, halftone: 0.7, hatch: 0.25, vig: 0.5, lines: '255,120,230' },
+  // a huge red sun over ink-black towers' shadows: the sumi-e level
+  sunset: { top: '#2a1838', hor: '#ff7c3c', low: '#3a1420', fog: '#ea7550', sun: [-0.25, 0.1, -1], sunCol: '#ffd4a4', disc: '#e8232a', sunR: 0.1,
+    shade: '#8a3a66', bld: ['#fff0dc', '#f6dfc6', '#ffe6d0'], roof: '#e2c2ae', glass: '#1c1018',
+    prop: '#3a2430', accent: '#e8232a', ink: '#14080c', ground: '#3a1420', cloud: '#ffb48a', streak: '#ffd0a8', mount: '#3a1424',
+    paper: 0.7, halftone: 0.2, hatch: 0.6, vig: 0.55, lines: '20,8,12' },
 };
 export const C = (hex) => new THREE.Color(hex);
 export const pick = (arr) => arr[(rng() * arr.length) | 0];
@@ -30,13 +47,18 @@ export const jitter = (c, a = 0.035) => c.clone().multiplyScalar(1 + (rng() * 2 
 export let theme = null;
 export function applyTheme(name) {
   const T = THEMES[name];
-  theme = Object.assign({}, T, { c: { bld: T.bld.map(C), roof: C(T.roof), glass: C(T.glass), prop: C(T.prop), accent: C(T.accent), cloud: C(T.cloud) } });
-  skyU.top.value.set(T.top); skyU.hor.value.set(T.hor); skyU.low.value.set(T.low); skyU.sunCol.value.set(T.sunCol);
+  theme = Object.assign({}, T, { c: { bld: T.bld.map(C), roof: C(T.roof), glass: C(T.glass), prop: C(T.prop), accent: C(T.accent),
+    cloud: C(T.cloud), ink: C(T.ink), shade: C(T.shade), sunCol: C(T.sunCol) } });
+  skyU.top.value.set(T.top); skyU.hor.value.set(T.hor); skyU.low.value.set(T.low); skyU.sunCol.value.set(T.disc);
+  skyU.mount.value.set(T.mount); skyU.ink.value.set(T.ink); skyU.streak.value.set(T.streak); skyU.sunR.value = T.sunR;
   skyU.sunDir.value.set(...T.sun).normalize();
   scene.fog.color.set(T.fog);
-  // scaled so sun + sky on a lit roof stays just under 1.0 and the palette doesn't clip to white
-  sun.position.set(...T.sun).multiplyScalar(100); sun.color.set(T.sunCol); sun.intensity = T.sunInt * 0.72;
-  hemi.color.set(T.hemiSky); hemi.groundColor.set(T.hemiGround); hemi.intensity = T.hemiInt * 0.8;
-  matHull.color.set(T.outline); matEdge.color.set(T.outline); matGround.color.set(T.ground);
+  INK.uSunDir.value.set(...T.sun).normalize(); INK.uSunCol.value.set(T.sunCol); INK.uShade.value.set(T.shade);
+  INK.uFogCol.value.set(T.fog); INK.uFogNear.value = scene.fog.near; INK.uFogFar.value = scene.fog.far;
+  INK.uHalftone.value = T.halftone; INK.uHatch.value = T.hatch; INK.uInkCol.value.set(T.ink);
+  postU.uInk.value.set(T.ink); postU.uPaper.value = T.paper; postU.uVig.value = T.vig;
+  sun.position.set(...T.sun).multiplyScalar(100); sun.color.set(T.sunCol);
+  hemi.color.set(T.hor); hemi.groundColor.set(T.shade);
+  matHull.color.set(T.ink); matCloudHull.color.set(T.ink); matEdge.color.set(T.ink); setColor(matGround, T.ground);
   cpMats.next.color.set(T.accent); pillar.material.color.set(T.accent);
 }
