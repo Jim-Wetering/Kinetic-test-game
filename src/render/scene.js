@@ -3,7 +3,10 @@ import { NOISE } from './ink.js';
 
 // ---------------------------------------------------------------- renderer
 export const renderer = new THREE.WebGLRenderer({ antialias: false });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// supersampled: always draw at 1.5x the screen's own pixel density (capped at 2x) and let the browser scale it
+// down. that is the anti-aliasing: the ink pass reads the depth texture, which rules out multisampling, and without
+// it hard edges and fine brushwork shimmer as you move. a 100%-scaled desktop window would otherwise draw at 1x
+renderer.setPixelRatio(Math.min(Math.max(devicePixelRatio, 1) * 1.5, 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
 export const scene = new THREE.Scene();

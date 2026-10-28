@@ -17,7 +17,7 @@ export const postU = {
   uInk: { value: new THREE.Color(0, 0, 0) }, uPaper: { value: 0.3 }, uPaperCol: { value: new THREE.Color(1, 0.97, 0.9) },
   uVig: { value: 0.5 }, uTime: { value: 0 },
   // brush radius in pixels at 1080p for something right in front of you; it thins out with distance
-  uLine: { value: 4.6 },
+  uLine: { value: 6.5 },
   // camera-to-world matrix and tan of the half field of view (x, y), to rebuild each pixel's world position
   uCamWorld: { value: new THREE.Matrix4() }, uTan: { value: new THREE.Vector2(1, 1) },
 };
@@ -34,6 +34,27 @@ const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMater
     float linZ(vec2 uv) {
       float d = texture2D(tDepth, uv).x;
       return (uNear * uFar) / (uFar - d * (uFar - uNear));
+    }
+    // bristle streaks: world-anchored noise that varies fast across a stroke and slowly along it, so it reads as
+    // parallel hairs of a dry brush. its world scale snaps to octaves by distance and crossfades between them, which
+    // keeps the hairs about pxApart pixels apart near or far without shimmering as you move
+    float bristles(float across, float along, float z, float pxApart) {
+      float worldPx = z * 2.0 * uTan.y / uRes.y;
+      float L = log2(max(pxApart * worldPx, 1e-4) / 0.02), l0 = floor(L);
+      float p0 = 0.02 * exp2(l0), p1 = p0 * 2.0;
+      float n0 = noise(vec2(across / p0, along / (p0 * 16.0)));
+      float n1 = noise(vec2(across / p1 + 17.0, along / (p1 * 16.0) + 5.0));
+      return mix(n0, n1, L - l0);
+    }
+    // the edge test at one point: reciprocal depth is affine across any plane in screen space, so its second
+    // difference over a stencil of radius o is ~0 on flat faces and spikes at creases and silhouettes (a wide
+    // stencil gives a wide stroke). returns that spike relative to depth, and the depth gradient (which way the
+    // edge runs)
+    vec3 crease(vec2 uv, vec2 o) {
+      float c = 1.0 / linZ(uv);
+      float xp = 1.0 / linZ(uv + vec2(o.x, 0.0)), xm = 1.0 / linZ(uv - vec2(o.x, 0.0));
+      float yp = 1.0 / linZ(uv + vec2(0.0, o.y)), ym = 1.0 / linZ(uv - vec2(0.0, o.y));
+      return vec3((abs(xp + xm - 2.0 * c) + abs(yp + ym - 2.0 * c)) / c, xp - xm, yp - ym);
     }
     vec3 fxaa(vec2 uv, vec2 px) {
       vec3 nw = texture2D(tWorld, uv + vec2(-1.0, -1.0) * px).rgb, ne = texture2D(tWorld, uv + vec2(1.0, -1.0) * px).rgb;
@@ -53,60 +74,77 @@ const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMater
       vec2 px = 1.0 / uRes, sp = vUv * uRes / uPx;
       vec3 col = fxaa(vUv, px);
       // where this pixel is in the world: the nearest surface close by, so the strip of sky beside a silhouette
-      // borrows the object's position and its stroke stays anchored too
-      float z0 = linZ(vUv), nb = 4.0;
-      float zn = min(z0, min(min(linZ(vUv + vec2(px.x * nb, 0.0)), linZ(vUv - vec2(px.x * nb, 0.0))),
-                             min(linZ(vUv + vec2(0.0, px.y * nb)), linZ(vUv - vec2(0.0, px.y * nb)))));
+      // borrows the object's position and its stroke stays anchored too. the search reaches as far as a stroke is
+      // wide: otherwise the outer part of a stroke would take its texture from whatever is behind, and flip
+      // between the two as the edge moves across it (that crawls)
+      float z0 = linZ(vUv), zn = z0;
+      for (int i = 0; i < 2; i++) {
+        vec2 r = px * (i == 0 ? 6.0 : 14.0) * (uRes.y / 1080.0);
+        zn = min(zn, min(min(linZ(vUv + vec2(r.x, 0.0)), linZ(vUv - vec2(r.x, 0.0))),
+                         min(linZ(vUv + vec2(0.0, r.y)), linZ(vUv - vec2(0.0, r.y)))));
+      }
       vec3 wp = (uCamWorld * vec4((vUv * 2.0 - 1.0) * uTan * zn, -zn, 1.0)).xyz;
-      // far away, paint instead of draw: the image is dragged into short strokes of its own colour. each sample
-      // along a stroke only takes colour from the same surface, so shapes hold while windows and detail smear into
-      // a few bands of paint; silhouettes go ragged. stroke angle, length and bristles are looked up in world space
-      // so the paint stays put as you move. the sky (past 1900 m) is already painted
-      // world alpha drops below 1 where a brush ring is painted over the scene (see brushRingMat): those pixels and
-      // samples are left out of the smear and the ink, so the rings stay crisp and never get outlined
-      float solid = texture2D(tWorld, vUv).a;
+      // metres per pixel at that depth: world-space texture finer than a few pixels is faded out, never drawn
+      float wpx = zn * 2.0 * uTan.y / uRes.y;
+      // world alpha marks what to leave alone: below 1 where a brush ring is painted over the scene (see
+      // brushRingMat), 0.5 on clouds, which are soft paint already. rings stay out of the ink, so they never get
+      // outlined, and neither gets the frayed tops below
+      float solid = texture2D(tWorld, vUv).a, canvas = step(0.99, solid);
       float k1080 = uRes.y / 1080.0;
-      float paint = smoothstep(${PAINT_NEAR.toFixed(1)}, ${(PAINT_NEAR + 140).toFixed(1)}, z0) * (1.0 - step(1900.0, z0)) * solid;
-      if (paint > 0.0) {
-        float ang = (noise(wp.xz * 0.015 + wp.y * 0.02) - 0.5) * 0.8;
-        float len = k1080 * mix(2.5, 7.0, smoothstep(${(PAINT_NEAR + 60).toFixed(1)}, 600.0, z0)) * (0.6 + 0.8 * noise(wp.xz * 0.04 - wp.y * 0.05));
-        vec2 dir = vec2(cos(ang), sin(ang)) * px * len;
-        vec2 jit = (vec2(noise(wp.xy * 0.35 + wp.z * 0.2), noise(wp.zy * 0.35 - wp.x * 0.2)) - 0.5) * px * 5.0 * k1080 * paint;
-        vec2 uv0 = vUv + jit;
-        float zc = linZ(uv0);
-        vec4 s0 = texture2D(tWorld, uv0);
-        vec3 acc = s0.rgb * s0.a; float wsum = s0.a;
-        for (int i = 1; i <= 4; i++) {
-          for (int k = 0; k < 2; k++) {
-            vec2 uv2 = uv0 + dir * float(i) * (k == 0 ? 1.0 : -1.0);
-            vec4 s2 = texture2D(tWorld, uv2);
-            float same = (1.0 - smoothstep(0.02, 0.06, abs(linZ(uv2) - zc) / zc)) * s2.a;
-            acc += s2.rgb * same; wsum += same;
-          }
-        }
-        // bristle streaks running with the stroke, coarse enough not to alias far off
-        vec3 smear = acc / max(wsum, 1e-3) * (0.9 + 0.18 * noise(vec2((wp.x + wp.z) * 0.03, wp.y * 0.25)));
-        col = mix(col, smear, paint * step(0.01, wsum));
+      // far away, the facade shader has already painted towers as one flat colour with a few dabs for windows. all
+      // that's left is the top of the stroke: just above a far silhouette, a few chunky hairs of the brush overshoot
+      // into whatever is behind, each to its own length, so tops fray like a dry brush lifting off. a hair is only
+      // drawn when the colour it reaches down for belongs to that same nearer surface. world-anchored, so it holds
+      // still as you move
+      float paint = smoothstep(${PAINT_NEAR.toFixed(1)}, ${(PAINT_NEAR + 140).toFixed(1)}, zn) * step(zn, 1900.0);
+      if (paint > 0.0 && z0 / zn > 1.2) {
+        float hairC = bristles(wp.x + wp.z, wp.y, zn, 6.0);
+        float reach = smoothstep(0.5, 1.0, hairC) * 14.0 * k1080;
+        vec2 uvF = vUv - vec2(0.0, px.y * reach);
+        vec4 sF = texture2D(tWorld, uvF);
+        float own = step(abs(linZ(uvF) - zn) / zn, 0.05) * step(0.99, sF.a) * step(0.5, reach);
+        col = mix(col, sF.rgb, own * paint);
       }
       // brush radius: fat up close and finer into the distance, swelling and thinning along the stroke
       float swell = noise(wp.xz * 0.5 + wp.y * 0.37) * 0.7 + noise(wp.xz * 0.13 - wp.y * 0.11) * 0.3;
-      float R = uLine * (uRes.y / 1080.0) * mix(1.0, 0.3, smoothstep(20.0, 320.0, zn)) * (0.3 + 1.5 * swell);
-      // reciprocal depth is affine across any plane in screen space, so its second difference is ~0 on flat
-      // faces and spikes at creases and silhouettes; a wide stencil gives a wide stroke
+      float R = uLine * (uRes.y / 1080.0) * mix(1.0, 0.45, smoothstep(30.0, 350.0, zn)) * (0.3 + 1.5 * swell);
       vec2 o = px * R;
-      float c = 1.0 / z0;
-      float lap = abs(1.0 / linZ(vUv + vec2(o.x, 0.0)) + 1.0 / linZ(vUv - vec2(o.x, 0.0)) - 2.0 * c)
-                + abs(1.0 / linZ(vUv + vec2(0.0, o.y)) + 1.0 / linZ(vUv - vec2(0.0, o.y)) - 2.0 * c);
-      // a ragged threshold gives the stroke a rough, bristly edge, and dry flecks of ink feather off it. the fine
-      // detail is only used up close, where it's bigger than a pixel, so it never sparkles in the distance
-      float closeUp = 1.0 - smoothstep(12.0, 60.0, zn);
-      float rough = mix(noise(wp.xy * 2.6 + wp.z * 1.9), noise(wp.xy * 9.0 - wp.z * 7.3), 0.45 * closeUp);
+      // painted by hand, not traced: the stroke drifts a few pixels off the true edge and back, slowly along its
+      // length, so it wobbles, overshoots and sometimes leaves a sliver of the shape outside it
+      vec2 drift = (vec2(noise(wp.xz * 0.21 + wp.y * 0.17), noise(wp.zy * 0.19 - wp.x * 0.23 + 4.0)) - 0.5)
+                 * px * 6.0 * k1080 * mix(1.0, 0.3, smoothstep(30.0, 250.0, zn));
+      vec2 uvE = vUv + drift;
+      // the edge test is taken at two points a fraction of a pixel apart and averaged, so a stroke's edge covers
+      // pixels partially instead of snapping on and off as the camera moves
+      vec3 k1 = crease(uvE + px * vec2(0.3, 0.15), o), k2 = crease(uvE - px * vec2(0.3, 0.15), o);
+      float lr = 0.5 * (k1.x + k2.x);
+      // a ragged threshold gives the stroke a rough, bristly edge, and dry flecks of ink feather off it. each layer
+      // of that detail is only used while it's several pixels across, so it never sparkles in the distance, and
+      // every cut-off is a soft ramp rather than a hard step
+      float k26 = 1.0 - smoothstep(0.12, 0.3, 2.6 * wpx), k9 = 1.0 - smoothstep(0.12, 0.3, 9.0 * wpx);
+      float rough = 0.5 + (noise(wp.xy * 0.8 + wp.z * 0.6) - 0.5) * 0.6 + (noise(wp.xy * 2.6 + wp.z * 1.9) - 0.5) * 0.7 * k26
+                  + (noise(wp.xy * 9.0 - wp.z * 7.3) - 0.5) * 0.45 * k9;
       float t = 0.014 * (0.5 + rough);
-      float edge = smoothstep(t, t * 1.4, lap / c);
-      float fleck = step(0.7, noise(wp.xy * 6.5 + wp.z * 5.3)) * closeUp;
-      edge = max(edge, smoothstep(t * 0.6, t * 0.8, lap / c) * fleck);
-      // black ink is for things close by; far shapes are left as strokes of their own colour
-      col = mix(col, uInk, edge * solid * (1.0 - smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, zn)));
+      float edge = 0.5 * (smoothstep(t * 0.85, t * 1.6, k1.x) + smoothstep(t * 0.85, t * 1.6, k2.x));
+      float fleck = smoothstep(0.66, 0.76, noise(wp.xy * 6.5 + wp.z * 5.3)) * (1.0 - smoothstep(0.12, 0.3, 6.5 * wpx));
+      edge = max(edge, smoothstep(t * 0.6, t * 0.85, lr) * fleck);
+      // like a loaded brush on paper: the middle of the stroke is solid ink, and only its thinner fringe goes
+      // rough. there, stretches run dry and break into parallel hairs, and the edge is torn with irregular bites.
+      // hairs run along the edge: for an upright edge they vary across in the horizontal, for a level one in the
+      // vertical
+      float core = smoothstep(t * 1.6, t * 3.5, lr);
+      bool upright = abs(k1.y + k2.y) > abs(k1.z + k2.z);
+      float eAcross = upright ? wp.x + wp.z : wp.y, eAlong = upright ? wp.y : wp.x + wp.z;
+      float dry = smoothstep(0.3, 0.7, noise(vec2(eAlong * 0.12, eAcross * 0.05 + 3.0)));
+      float hairs = smoothstep(0.24, 0.56, bristles(eAcross, eAlong, zn, 2.2));
+      float bite = smoothstep(0.7, 0.8, bristles(eAlong, eAcross, zn, 14.0));
+      edge *= mix(1.0, hairs * (1.0 - bite), (1.0 - core) * mix(0.35, 1.0, dry));
+      // where the paint drags thin, the stroke shows grey streaks running along it, and the shape shows through
+      // a little; the core stays solid black
+      float drag = (1.0 - core) * (1.0 - smoothstep(0.35, 0.65, bristles(eAcross, eAlong, zn, 3.5))) * mix(0.3, 0.8, dry);
+      vec3 inkCol = mix(uInk, mix(uInk, vec3(0.62), 0.55), drag);
+      // everything keeps its black ink outline; far off it thins (the brush radius shrinks) and greys a touch
+      col = mix(col, inkCol, edge * solid * (1.0 - drag * 0.25) * mix(1.0, 0.8, smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, zn)));
       vec4 v = texture2D(tView, vUv);
       col = mix(col, v.rgb, v.a);
       // paper: fine grain plus long fibres, multiplied in like ink soaking into washi

@@ -33,11 +33,14 @@ function resize() {
 }
 export function initResize() { addEventListener('resize', resize); resize(); }
 
-// speed lines as dry pen strokes: thin ink slivers, fat at the outer end and tapering toward the centre. each one
-// lives for a moment and glides outward, swelling in and thinning out, instead of the whole set re-rolling every
-// frame (which strobes)
+// speed lines as dry-brush strokes: a blunt, solid head at the screen edge that splits into a few hairs running
+// in toward the centre, each ending at its own length. each streak lives for a moment and glides outward, swelling
+// in and thinning out; its shape is picked when it spawns, so nothing re-rolls from frame to frame (which strobes)
 const streaks = Array.from({ length: 60 }, () => ({ p: Math.random() }));
-function respawn(st) { st.a = Math.random() * Math.PI * 2; st.len = 0.4 + Math.random(); st.w = 0.8 + Math.random() * 2.2; st.v = 0.7 + Math.random() * 0.6; }
+function respawn(st) {
+  st.a = Math.random() * Math.PI * 2; st.len = 0.4 + Math.random(); st.w = 2.2 + Math.random() * 3.6; st.v = 0.7 + Math.random() * 0.6;
+  st.hairs = Array.from({ length: 4 }, (_, i) => ({ o: -0.85 + i * 0.57 + (Math.random() - 0.5) * 0.3, l: 0.25 + Math.random() * 0.5, w: 0.25 + Math.random() * 0.3 }));
+}
 streaks.forEach(respawn);
 let lastT = performance.now();
 export function drawSpeedLines(hs) {
@@ -46,18 +49,25 @@ export function drawSpeedLines(hs) {
   if (!settings.fx || hs < 15 || game.state !== 'play') return;
   const w = lines.width, h = lines.height, cxs = w / 2, cys = h / 2, diag = Math.hypot(w, h) / 2;
   const k = Math.min((hs - 15) / 30, 1), count = Math.round(14 + k * 46);
-  lctx.fillStyle = `rgba(${theme.lines},${0.14 + k * 0.3})`;
+  // a point at radius r from the centre, d pixels to the side of the streak's line
+  const P = (st, r, d) => { const a = st.a + d / r; lctx.lineTo(cxs + Math.cos(a) * r, cys + Math.sin(a) * r); };
+  lctx.fillStyle = `rgba(${theme.lines},${0.16 + k * 0.32})`;
   lctx.beginPath();
   for (let i = 0; i < count; i++) {
     const st = streaks[i];
     st.p += dt * (1.2 + k * 2.4) * st.v;
     if (st.p > 1) { st.p -= 1; respawn(st); }
-    const r0 = diag * (0.5 + st.p * 0.45), r1 = r0 + diag * (0.1 + k * 0.35) * st.len;
-    const half = st.w * (0.5 + k) * Math.sin(st.p * Math.PI) / r1;
-    lctx.moveTo(cxs + Math.cos(st.a) * r0, cys + Math.sin(st.a) * r0);
-    lctx.lineTo(cxs + Math.cos(st.a + half) * r1, cys + Math.sin(st.a + half) * r1);
-    lctx.lineTo(cxs + Math.cos(st.a - half) * r1, cys + Math.sin(st.a - half) * r1);
-    lctx.closePath();
+    const L = diag * (0.1 + k * 0.35) * st.len, r0 = diag * (0.5 + st.p * 0.45), r1 = r0 + L, rb = r1 - L * 0.4;
+    const W = st.w * (0.5 + k) * Math.sin(st.p * Math.PI);
+    // the head: blunt at the outer end, narrowing a little to where it splits
+    lctx.moveTo(cxs + Math.cos(st.a + W / r1) * r1, cys + Math.sin(st.a + W / r1) * r1);
+    P(st, r1, -W); P(st, rb, -W * 0.75); P(st, rb, W * 0.75); lctx.closePath();
+    // the hairs: thin slivers from the split, tapering to a point further in
+    for (const hr of st.hairs) {
+      const c = hr.o * W * 0.75, hw = Math.max(0.5, W * hr.w * 0.5), re = rb - L * hr.l;
+      lctx.moveTo(cxs + Math.cos(st.a + (c - hw) / rb) * rb, cys + Math.sin(st.a + (c - hw) / rb) * rb);
+      P(st, rb, c + hw); P(st, re, c); lctx.closePath();
+    }
   }
   lctx.fill();
 }

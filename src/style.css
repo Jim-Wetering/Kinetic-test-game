@@ -65,6 +65,16 @@ canvas { display: block; }
 #feed div { font: 500 17px var(--display); letter-spacing: 1.5px; }
 #feed span { color: var(--amber); margin-left: 6px; }
 
+/* brushed numerals: painted with a dry brush, streaks of lighter and darker paint running through them at two
+   slightly different angles so they don't read as stripes. the text keeps its colour (the rank's changes), and
+   the ink halo moves to a filter because text-shadow would draw over clipped text */
+#timer, #speed, #rank { -webkit-text-fill-color: transparent; background-color: currentColor;
+  background-image:
+    repeating-linear-gradient(96deg, transparent 0 2px, rgba(21, 19, 15, .24) 2px 3px, rgba(255, 255, 255, .2) 3px 5px, transparent 5px 9px),
+    repeating-linear-gradient(91deg, transparent 0 5px, rgba(21, 19, 15, .16) 5px 7px, transparent 7px 13px);
+  -webkit-background-clip: text; background-clip: text; text-shadow: none; -webkit-text-stroke: 0;
+  filter: drop-shadow(0 1px 0 var(--ink)) drop-shadow(0 0 5px rgba(21, 19, 15, .7)); }
+
 #msg { position: absolute; top: 28%; width: 100%; text-align: center; font: 500 34px var(--display); letter-spacing: 6px;
   opacity: 0; transition: opacity .25s; }
 

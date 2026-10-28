@@ -54,7 +54,7 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform vec3 uSunDir, uSunCol, uShade, uFogCol, uInkCol, uGlass, uSkyRef, uLitCol;
-  uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit;
+  uniform float uFogNear, uFogFar, uHatch, uFog, uFlat, uLit, uMark;
   varying vec3 vN, vW, vC; varying float vDepth;
   #ifdef FACADE
     varying vec4 vLo; varying vec2 vFac;
@@ -62,6 +62,10 @@ const fragmentShader = `
   ${NOISE}
   // 1 inside [a, b], with edges softened over w
   float band(float x, float a, float b, float w) { return smoothstep(a - w, a + w, x) - smoothstep(b - w, b + w, x); }
+  // how much of a pattern with frequency f (cycles per metre along coord) to keep: all of it while a cycle spans
+  // several pixels, fading to none before it gets down to a few, so no detail is ever finer than the screen can
+  // hold (that is what shimmers when you move)
+  float keep(float f, float coord) { return 1.0 - smoothstep(0.12, 0.3, f * fwidth(coord)); }
   void main() {
     vec3 n = normalize(gl_FrontFacing ? vN : -vN);
     float ndl = dot(n, uSunDir);
@@ -72,7 +76,13 @@ const fragmentShader = `
     vec3 base = vC;
     // weathering: soft vertical streaks run down walls, like rain-stained render
     float vert = 1.0 - abs(n.y);
-    base *= 1.0 - vert * 0.07 * noise(vec2((vW.x + vW.z) * 0.9, vW.y * 0.04));
+    base *= 1.0 - vert * 0.07 * noise(vec2((vW.x + vW.z) * 0.9, vW.y * 0.04)) * keep(0.9, vW.x + vW.z);
+    // broad brushwork over big flat areas: long strokes about a metre wide, up and down on walls and diagonal on
+    // roofs, a shade lighter or darker than their neighbours. gone by mid-distance, where it would only shimmer
+    vec2 bp = vert > 0.5 ? vec2(abs(n.x) > 0.5 ? vW.z : vW.x, vW.y) : vec2(vW.x + vW.z, vW.x - vW.z) * 0.7071;
+    float broad = 0.5 + (noise(vec2(bp.x * 1.1, bp.y * 0.06)) - 0.5) * 0.7 * keep(1.1, bp.x)
+                + (noise(vec2(bp.x * 3.1, bp.y * 0.15)) - 0.5) * 0.3 * keep(3.1, bp.x);
+    base *= 1.0 + (broad - 0.5) * 0.1 * (1.0 - smoothstep(110.0, 220.0, vDepth));
     vec3 col = base * light;
     #ifdef FACADE
       // windows: a grid of panes, inked frames and a pale stone sill, skipped on blank (party) walls
@@ -96,19 +106,31 @@ const fragmentShader = `
         vec3 glass = mix(uGlass, uSkyRef, 0.45 * (1.0 - (lv - 0.55) / 1.7) * (0.5 + h)) * mix(0.75, 1.0, lit);
         float on = step(1.0 - uLit, hash(vec2(fl, cell) + vLo.zw * 0.21 + 3.7));
         glass = mix(glass, uLitCol * (0.8 + 0.3 * h), on);
-        // in the distance the grid gives way to painting: each floor's windows become one rough horizontal stroke
-        // of glass colour, wobbling along its length and broken here and there (the post pass drags these into
-        // brush strokes). very far off it settles to the average tone
-        float far = smoothstep(${PAINT_NEAR.toFixed(1)}, ${PAINT_NEAR.toFixed(1)} + 110.0, vDepth);
-        float gone = smoothstep(520.0, 900.0, vDepth);
-        float wob1 = (noise(vec2(along * 0.03, fl * 1.7)) - 0.5) * 0.5, wob2 = (noise(vec2(along * 0.025 + 9.0, fl * 2.3)) - 0.5) * 0.5;
-        float row = inside * band(lv, 0.5 + wob1, 2.3 + wob2, aa) * step(0.36, noise(vec2(along * 0.04 + fl * 3.1, fl * 0.7)));
-        col = mix(col, glass, mix(pane, row, far) * (1.0 - gone));
+        col = mix(col, glass, pane);
         // the thin frames and sills go first, before they're thinner than a pixel
         float fine = 1.0 - smoothstep(50.0, 130.0, vDepth);
         col = mix(col, uInkCol, frame * fine * 0.55);
         col = mix(col, base * 1.12 * light, sill * fine);
-        col = mix(col, mix(col, uGlass, 0.3), gone * inside);
+        // in the distance the grid gives way to painting: the wall goes to one flat colour and the windows become
+        // a few big dabs on a coarse grid (~11 x 9 m), each a handful of brush hairs laid side by side. at night they're
+        // lamplight; by day, glass with the odd sun glint
+        float far = smoothstep(${PAINT_NEAR.toFixed(1)}, ${PAINT_NEAR.toFixed(1)} + 110.0, vDepth);
+        vec2 dc = vec2(along / 11.0, below / 9.0), di = floor(dc), df = fract(dc);
+        float dabOn = step(0.58, hash(di + vLo.xy * 0.13 + side * 3.1)) * inside;
+        // five hairs per dab, each starting a little further in and running its own length
+        float hy = (df.y - 0.2) / 0.55 * 5.0, hRow = floor(hy), hf = fract(hy);
+        float hl = 0.4 + 0.5 * hash(di + hRow * 1.7 + 4.2);
+        float hx = (df.x - 0.08 - hash(di + hRow * 2.9) * 0.08) / hl;
+        // once the hairs are thinner than a pixel their edges blur together instead of shimmering
+        float hw = max(0.06, fwidth(hy)), xw = max(0.04, fwidth(hx));
+        float hair = step(0.0, hy) * step(hy, 5.0) * band(hf, 0.1, 0.9, hw) * band(hx, 0.0, 1.0, xw);
+        // the brush runs dry toward the end of each hair: gaps open up along its last stretch
+        hair *= step(smoothstep(0.5, 1.0, hx) * 0.85, noise(vec2(hx * 6.0, hRow * 3.1 + di.x)));
+        float dab = dabOn * hair;
+        float lamp = step(1.0 - min(1.0, uLit * 1.6), hash(di + 2.3)), glint = step(0.55, hash(di + 5.1)) * lit;
+        vec3 dabCol = mix(mix(mix(uGlass, uSkyRef, 0.35), uSunCol * 0.95, glint), uLitCol, lamp);
+        // the wall itself is left as one flat colour: no weathering, no grid
+        col = mix(col, mix(vC * light, dabCol, dab), far);
       }
       // roofs: rolled membrane in 1.2 m strips with dark seams, patched and rain-stained
       if (n.y > 0.5) {
@@ -122,6 +144,21 @@ const fragmentShader = `
     #endif
     // tops catch a touch more sky, so roofs pop against walls
     col *= 1.0 + max(n.y, 0.0) * 0.05;
+    #if defined(STREAK_X) || defined(STREAK_Z)
+      // a pale highlight laid on with a dry brush: bristle streaks run the length of the strip, the paint thinning
+      // to the colour underneath in long dashes. fades to plain paint where the streaks would be under a pixel
+      #ifdef STREAK_X
+        float sAlong = vW.x, sAcross = vert > 0.5 ? vW.y : vW.z;
+      #else
+        float sAlong = vW.z, sAcross = vert > 0.5 ? vW.y : vW.x;
+      #endif
+      float br = 0.5 + (noise(vec2(sAcross * 11.0, sAlong * 0.22)) - 0.5) * 0.6 * keep(11.0, sAcross)
+               + (noise(vec2(sAcross * 31.0, sAlong * 0.5)) - 0.5) * 0.4 * keep(31.0, sAcross);
+      float thin = smoothstep(0.55, 0.75, noise(vec2(sAlong * 0.35, sAcross * 2.0 + 7.0))) * smoothstep(0.25, 0.5, br);
+      float streakNear = 1.0 - smoothstep(25.0, 110.0, vDepth);
+      col *= mix(1.0, 0.8 + 0.32 * br, streakNear);
+      col = mix(col, col * uShade * 0.85, thin * streakNear * 0.7);
+    #endif
     // ink hatching on faces turned well away from the sun: broken diagonal pen strokes drawn on the surface in
     // world space, so they stay put as you move. they fade out before they get fine enough to shimmer
     float away = smoothstep(-0.15, -0.55, ndl) * uHatch * (1.0 - uFlat);
@@ -134,44 +171,50 @@ const fragmentShader = `
     // paper mottle in world space, so it sticks to surfaces
     col *= 0.95 + 0.08 * noise(vW.xz * 0.11 + vW.y * 0.07);
     float f = smoothstep(uFogNear, uFogFar, vDepth) * uFog;
-    gl_FragColor = vec4(mix(col, uFogCol, f), 1.0);
+    // alpha tells the post pass what to leave alone: 0.5 marks shapes that are already soft paint (clouds)
+    gl_FragColor = vec4(mix(col, uFogCol, f), uMark);
   }`;
 
 // vertexColors meshes read their colour per vertex; anything else uses `color`.
 // fog: false for things that sit beyond the fog (clouds) or in the viewmodel pass. flat: 0..1, how much the
 // shadow side is lifted toward the lit colour (1 ignores the sun). facade: draw windows from the aLo / aFac
 // attributes a facade Batch writes
-export function inkMat({ color = 0xffffff, vertexColors = false, fog = true, flat = 0, polygonOffset = false, facade = false } = {}) {
+// painted: already soft paint (clouds), so the post pass skips its distance streaking
+// streak: 'x' or 'z' for a dry-brush highlight whose bristles run along that axis (roof copings)
+export function inkMat({ color = 0xffffff, vertexColors = false, fog = true, flat = 0, polygonOffset = false, facade = false, painted = false, streak = null } = {}) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...INK, uBase: { value: new THREE.Color(color) }, uFog: { value: fog ? 1 : 0 }, uFlat: { value: flat } },
-    vertexShader, fragmentShader, vertexColors, defines: facade ? { FACADE: '' } : {},
+    uniforms: { ...INK, uBase: { value: new THREE.Color(color) }, uFog: { value: fog ? 1 : 0 }, uFlat: { value: flat }, uMark: { value: painted ? 0.5 : 1 } },
+    vertexShader, fragmentShader, vertexColors,
+    defines: { ...(facade ? { FACADE: '' } : {}), ...(streak ? { ['STREAK_' + streak.toUpperCase()]: '' } : {}) },
     polygonOffset, polygonOffsetFactor: polygonOffset ? 1 : 0, polygonOffsetUnits: polygonOffset ? 1 : 0,
   });
 }
 // the same material's colour, whatever kind it is
 export const setColor = (m, hex) => (m.uniforms ? m.uniforms.uBase.value.set(hex) : m.color.set(hex));
 
-// back-face hull for the batched world: an ink outline up close; with distance it takes the shape's own (lit)
-// colour, so a far silhouette is a fat stroke of paint rather than a black line
-export function inkHullMat({ fog = true } = {}) {
+// back-face hull for the batched world: an ink outline. with paintFar (clouds) it takes the shape's own (lit)
+// colour with distance, so a far silhouette is a soft stroke of paint rather than a black line
+export function inkHullMat({ fog = true, painted = false, paintFar = false } = {}) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...INK, uFog: { value: fog ? 1 : 0 } }, side: THREE.BackSide, vertexColors: true,
+    uniforms: { ...INK, uFog: { value: fog ? 1 : 0 }, uMark: { value: painted ? 0.5 : 1 }, uPaintFar: { value: paintFar ? 1 : 0 } },
+    side: THREE.BackSide, vertexColors: true,
     vertexShader: `varying vec3 vC; varying float vDepth;
       void main() { vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform vec3 uInkCol, uSunCol, uShade, uFogCol; uniform float uFogNear, uFogFar, uFog; varying vec3 vC; varying float vDepth;
+    fragmentShader: `uniform vec3 uInkCol, uSunCol, uShade, uFogCol; uniform float uFogNear, uFogFar, uFog, uMark, uPaintFar; varying vec3 vC; varying float vDepth;
       void main() {
-        vec3 col = mix(uInkCol, vC * mix(uShade, uSunCol, 0.55), smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, vDepth));
-        gl_FragColor = vec4(mix(col, uFogCol, smoothstep(uFogNear, uFogFar, vDepth) * uFog), 1.0);
+        vec3 col = mix(uInkCol, vC * mix(uShade, uSunCol, 0.55), uPaintFar * smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, vDepth));
+        gl_FragColor = vec4(mix(col, uFogCol, smoothstep(uFogNear, uFogFar, vDepth) * uFog), uMark);
       }`,
   });
 }
-// ink lines (crease edges, cables, rails) that fade out over the same distance
+// ink lines (crease edges, cables, rails). they are a single pixel wide, so they crawl once the thing they draw
+// is small on screen: they fade out from 50 to 130 m
 export function inkLineMat() {
   return new THREE.ShaderMaterial({
     uniforms: { ...INK }, transparent: true,
     vertexShader: `varying float vDepth;
       void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
     fragmentShader: `uniform vec3 uInkCol; varying float vDepth;
-      void main() { gl_FragColor = vec4(uInkCol, 1.0 - smoothstep(${INK_NEAR.toFixed(1)}, ${INK_FAR.toFixed(1)}, vDepth)); }`,
+      void main() { gl_FragColor = vec4(uInkCol, 1.0 - smoothstep(50.0, 130.0, vDepth)); }`,
   });
 }

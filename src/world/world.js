@@ -3,10 +3,11 @@ import { EPS } from '../config.js';
 import { rng, rand } from '../utils.js';
 import { scene } from '../render/scene.js';
 import { Batch, Edges } from '../render/batch.js';
-import { matToon, matFacade, matCloud, matCloudHull, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
+import { matToon, matFacade, matCopeX, matCopeZ, matCloud, matCloudHull, matHull, matWorldHull, matEdge, matGround, matAnchor, matAnchorRing, cpMats,
   brushRingGeo } from '../render/materials.js';
 import { FLOOR, PARAPET, BAY } from '../render/ink.js';
 import { Decals, artCell } from '../render/graffiti.js';
+import { BrushTowers } from '../render/strokes.js';
 import { theme, C, pick, jitter } from '../render/themes.js';
 
 // ---------------------------------------------------------------- world
@@ -14,7 +15,9 @@ const world = new THREE.Group(); scene.add(world);
 export const colliders = [], anchors = [], cps = [];
 // spawn point and fall-out height of the loaded level, set by the generators and loadLevel
 export const level = { spawn: { x: 0, y: EPS, z: 0, yaw: 0 }, killY: -60 };
-let B, BF, HB, E, CL, CLH, D;
+let B, BF, HB, E, CL, CLH, D, ST, CPX, CPZ;
+// skyline towers further than this (m) outside the course are painted as single brush strokes, not built
+const STROKE_FROM = 130;
 
 export function clearWorld() {
   world.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
@@ -22,9 +25,11 @@ export function clearWorld() {
   colliders.length = 0; anchors.length = 0; cps.length = 0;
 }
 // static geometry is batched into a few big meshes: start a fresh set, generate, then finish
-export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); CL = new Batch(); CLH = new Batch(); D = new Decals(); }
+export function beginBuild() { B = new Batch(); BF = new Batch(true); HB = new Batch(); E = new Edges(); CL = new Batch(); CLH = new Batch(); D = new Decals(); ST = new BrushTowers();
+  CPX = new Batch(); CPZ = new Batch(); }
 export function finishBuild() {
-  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), CL.build(matCloud), CLH.build(matCloudHull), D.build());
+  world.add(B.build(matToon), BF.build(matFacade), HB.build(matWorldHull), E.build(matEdge), CL.build(matCloud), CLH.build(matCloudHull), D.build(), ST.build(),
+    CPX.build(matCopeX), CPZ.build(matCopeZ));
 }
 
 // ---------------------------------------------------------------- dressing helpers
@@ -84,10 +89,11 @@ function block(x0, y0, z0, x1, y1, z1, c, roof, a) {
   BF.box(x0, y0, z0, x1, y1, z1, c, roof, false, blank);
   HB.box(x0 - 0.18, y0, z0 - 0.18, x1 + 0.18, y1 + 0.18, z1 + 0.18, c);
   E.box(x0, y0, z0, x1, y1, z1);
-  // coping: a pale stone cap that sits a hair proud of the roof, so the roof edge reads as a line of light
-  const cap = c.clone().lerp(C('#d6d2c8'), 0.75), k = 0.38, o = 0.08, t = y1 + 0.03, b = y1 - 0.32;
-  B.box(x0 - o, b, z0 - o, x1 + o, t, z0 + k, cap); B.box(x0 - o, b, z1 - k, x1 + o, t, z1 + o, cap);
-  B.box(x0 - o, b, z0 + k, x0 + k, t, z1 - k, cap); B.box(x1 - k, b, z0 + k, x1 + o, t, z1 - k, cap);
+  // coping: a pale cap a hair proud of the roof and lapping down the wall, painted as a dry-brush highlight
+  // stroke along each edge (the bristles run along it), so every roof edge reads as a streak of light
+  const cap = c.clone().lerp(C('#ebe7de'), 0.85), k = 0.75, o = 0.08, t = y1 + 0.03, b = y1 - 0.75;
+  CPX.box(x0 - o, b, z0 - o, x1 + o, t, z0 + k, cap); CPX.box(x0 - o, b, z1 - k, x1 + o, t, z1 + o, cap);
+  CPZ.box(x0 - o, b, z0 + k, x0 + k, t, z1 - k, cap); CPZ.box(x1 - k, b, z0 + k, x1 + o, t, z1 - k, cap);
   return blank;
 }
 // AC units under windows, a downpipe, sometimes a fire escape, and street art on the walls
@@ -154,7 +160,7 @@ function crown(x0, z0, x1, z1, y, c, a) {
   }
   if (a() < 0.3) {
     const mx = a(x0 + 1, x1 - 1), mz = a(z0 + 1, z1 - 1), h = a(8, 22);
-    B.box(mx - 0.15, y, mz - 0.15, mx + 0.15, y + h, mz + 0.15, theme.c.steel);
+    B.box(mx - 0.3, y, mz - 0.3, mx + 0.3, y + h, mz + 0.3, theme.c.steel);
     for (let k = 1; k <= 2; k++) E.line(mx - 1.2, y + h * (0.5 + k * 0.2), mz, mx + 1.2, y + h * (0.5 + k * 0.2), mz);
   }
 }
@@ -294,7 +300,11 @@ export function backdrop(bd) {
     i++;
     const w = rand(14, 42), d = rand(14, 42), top = bd.yRef + rand(-30, 130), c = jitter(pick(T.bld));
     const a = artRng(x, top, zz), x0 = x - w / 2, x1 = x + w / 2, z0 = zz - d / 2, z1 = zz + d / 2;
-    if (a() < 0.4 && Math.min(w, d) > 20) {
+    // far from the course a tower is just one big brush stroke; nearer ones are built properly
+    const off = Math.hypot(Math.max(bd.x0 - x, 0, x - bd.x1), Math.max(bd.z0 - zz, 0, zz - bd.z1));
+    if (off > STROKE_FROM) {
+      ST.add(x, zz, -90, top, (w + d) / 2, c, a() * 100);
+    } else if (a() < 0.4 && Math.min(w, d) > 20) {
       // a podium with a slimmer tower set back on it
       const mid = top - a(14, 45), ins = a(3, Math.min(w, d) * 0.22), c2 = a() < 0.5 ? c : jitter(pick(T.bld));
       const bl = block(x0, -90, z0, x1, mid, z1, c, T.roof, a);

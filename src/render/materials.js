@@ -5,26 +5,29 @@ import { inkMat, inkHullMat, inkLineMat, NOISE } from './ink.js';
 // ---------------------------------------------------------------- ink materials
 // polygon offset pushes faces back so the crease lines always win the depth test
 export const matToon = inkMat({ vertexColors: true, polygonOffset: true });
+// roof copings: a pale dry-brush highlight stroke along each edge, one material per direction of the bristles
+export const matCopeX = inkMat({ vertexColors: true, polygonOffset: true, streak: 'x' });
+export const matCopeZ = inkMat({ vertexColors: true, polygonOffset: true, streak: 'z' });
 // building walls: the same ink shading plus a window grid
 export const matFacade = inkMat({ vertexColors: true, polygonOffset: true, facade: true });
 // clouds stay bright and puffy: only a soft shade on the underside
-export const matCloud = inkMat({ vertexColors: true, fog: false, flat: 0.65 });
+export const matCloud = inkMat({ vertexColors: true, fog: false, flat: 0.65, painted: true });
 // back-face hulls: the thick brush outline around every shape. the batched world's hulls and ink lines turn
 // into paint with distance; the viewmodel and hook blocks are always close, so they keep plain ink
 export const matHull = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.BackSide });
 export const matWorldHull = inkHullMat();
-export const matCloudHull = inkHullMat({ fog: false });
+export const matCloudHull = inkHullMat({ fog: false, painted: true, paintFar: true });
 export const matEdge = inkLineMat();
 export const matGround = inkMat({ color: 0x667788 });
 // grapple points are crane hooks: a yellow hook block, with a thin target ring so they still read from afar
 export const matAnchor = inkMat({ color: 0xe0a526 });
 
 // ---------------------------------------------------------------- brush rings
-// checkpoint and hook rings are painted circles (enso): one stroke of a loaded brush that lands fat, runs round
-// thinning, its bristles drying into streaks and gaps, and lifts off just short of closing. they don't write
-// depth, so the outline pass never inks around them
+// checkpoint and hook rings are painted circles (enso): one stroke of a loaded brush that lands heavy, runs round
+// with torn edges, splits into hairs as it runs dry, and lifts off just short of closing. they don't write depth,
+// so the outline pass never inks around them
 export function brushRingGeo(r, w) {
-  const g = new THREE.RingGeometry(r - w * 1.6, r + w * 1.6, 128, 1);
+  const g = new THREE.RingGeometry(r - w * 2.1, r + w * 2.1, 128, 1);
   const n = g.attributes.position.count;
   g.setAttribute('aRing', new THREE.Float32BufferAttribute(new Float32Array(n * 2).map((_, i) => (i % 2 ? w : r)), 2));
   return g;
@@ -44,17 +47,24 @@ function brushRingMat(color, opacity) {
       void main() {
         // s: how far round the stroke (0..1), t: across it, in brush half-widths
         float s = atan(vP.y, vP.x) / 6.28318 + 0.5, t = (length(vP) - vRing.x) / vRing.y;
-        float land = smoothstep(0.0, 0.04, s), lift = 1.0 - smoothstep(0.72, 0.96, s);
-        float w = (0.6 + 0.5 * land) * mix(0.3, 1.0, lift) * (0.85 + 0.3 * noise(vec2(s * 22.0, 3.1)));
-        float tc = t + (noise(vec2(s * 10.0, 7.0)) - 0.5) * 0.5;
-        float body = 1.0 - smoothstep(w - 0.15, w + 0.05, abs(tc));
-        // bristle streaks along the stroke, opening into dry gaps as the brush runs out of ink
-        float bristle = noise(vec2(s * 5.0, t * 7.0));
-        float dry = smoothstep(0.4, 0.95, s) * 0.55;
-        body *= smoothstep(dry, dry + 0.08, noise(vec2(s * 12.0, t * 5.0)) * 0.75 + bristle * 0.25);
-        float a = body * uOpacity;
+        // a heavy, blunt landing, a full body, then thinning as the brush lifts
+        float w = smoothstep(0.0, 0.012, s) * 1.05 * mix(0.35, 1.0, 1.0 - smoothstep(0.6, 0.97, s));
+        float tc = t + (noise(vec2(s * 8.0, 7.0)) - 0.5) * 0.3;
+        // torn edges: the inner and outer edge each wander at two scales, so they look ripped rather than wavy
+        float side = tc > 0.0 ? 1.0 : 5.0;
+        float torn = (noise(vec2(s * 40.0, side)) - 0.5) * 0.35 + (noise(vec2(s * 170.0, side + 8.0)) - 0.5) * 0.2;
+        float body = 1.0 - smoothstep(w + torn - 0.04, w + torn + 0.02, abs(tc));
+        // the tail splits into separate hairs: strands across the stroke, each running out at its own point, with
+        // streaky gaps opening between them
+        float strand = floor((tc + 1.5) * 4.0);
+        float tail = smoothstep(0.55, 0.78, s);
+        float strandOn = step(s, 0.74 + 0.23 * hash(vec2(strand, 3.0))) * step(0.42, noise(vec2(s * 30.0, tc * 9.0)));
+        body *= mix(1.0, strandOn, tail);
+        // a few specks of ink flicked off the brush beside the stroke
+        float speck = step(0.965, noise(vec2(s * 260.0, t * 6.0))) * step(abs(tc), w + 0.9) * (1.0 - body);
+        float a = max(body, speck) * uOpacity;
         if (a < 0.02) discard;
-        gl_FragColor = vec4(uColor * (0.78 + 0.32 * bristle), a);
+        gl_FragColor = vec4(uColor * (0.9 + 0.15 * noise(vec2(s * 6.0, t * 5.0))), a);
       }`,
   });
   m.color = m.uniforms.uColor.value; // so game code can read and set .color like a basic material
